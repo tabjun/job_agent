@@ -58,12 +58,12 @@ uv pip install langchain-openai langchain-google-genai langgraph python-dotenv a
 ### 3. API 키 설정 (.env)
 루트 디렉토리에 `.env` 파일을 생성하고 필요한 API 키를 입력합니다.
 
-| API 키 명칭 | 용도 | 발급처 |
-| :--- | :--- | :--- |
-| `GOOGLE_AI_API_KEY` | 기본 분석 모델 (Gemini 1.5 Pro) | [Google AI Studio](https://aistudio.google.com/) |
-| `OPENAI_API_KEY` | 고성능/가성비 모델 (GPT-5-mini) | [OpenAI Platform](https://platform.openai.com/) |
-| `TAVILY_API_KEY` | 실시간 채용 공고 및 기업 평판 검색 | [Tavily AI](https://tavily.com/) |
-| `DART_API_KEY` | 기업 재무 상태 및 공시 정보 조회 | [OpenDART](https://opendart.fss.or.kr/) |
+| API 키 명칭 | 유형 | 주요 장점 | 사용 조건 및 제약 | 발급처 |
+| :--- | :--- | :--- | :--- | :--- |
+| `GOOGLE_AI_API_KEY` | **무료 (Tier)** | 고성능 모델(Gemini 1.5 Pro) 무료 이용 가능, 긴 컨텍스트 지원 | 분당 요청 수(RPM) 및 일일 요청 수(RPD) 제한 존재 | [Google AI Studio](https://aistudio.google.com/) |
+| `OPENAI_API_KEY` | **유료 (종량제)** | GPT-5-mini의 압도적 가성비와 지능, 에이전트 작업 최적화 | 선불 크레딧 충전 필요 (1년 유효기간), 사용한 만큼 차감 | [OpenAI Platform](https://platform.openai.com/) |
+| `TAVILY_API_KEY` | **무료/유료** | LLM 검색에 최적화된 결과물(광고 제외, 깨끗한 텍스트) 제공 | 무료 티어 기준 월별 검색 크레딧 제한 존재 | [Tavily AI](https://tavily.com/) |
+| `DART_API_KEY` | **무료** | 대한민국 금융감독원 공식 재무 데이터 및 공시 정보 제공 | 일일 호출 한도(약 1만 건) 존재, 기업별 고유번호 관리 필요 | [OpenDART](https://opendart.fss.or.kr/) |
 
 ---
 
