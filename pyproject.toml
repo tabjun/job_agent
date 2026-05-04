@@ -6,9 +6,11 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "langchain-community>=0.4.1",
+    "langchain-google-genai>=4.2.2",
     "langchain-openai",
     "langchain-tavily",
     "langgraph",
+    "opendartreader>=0.2.3",
     "python-dotenv",
     "tavily-python>=0.7.24",
 ]
