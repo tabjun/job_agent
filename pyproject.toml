@@ -1,0 +1,14 @@
+[project]
+name = "langchain-example"
+version = "0.1.0"
+description = "LangChain & LangGraph implementation examples"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "langchain-community>=0.4.1",
+    "langchain-openai",
+    "langchain-tavily",
+    "langgraph",
+    "python-dotenv",
+    "tavily-python>=0.7.24",
+]
