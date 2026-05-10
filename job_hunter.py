@@ -2,9 +2,10 @@ import asyncio
 import os
 import glob
 import json
+import aiohttp
 from typing import List, Dict, Any
 from langchain_core.tools import tool
-from langchain_tavily import TavilySearch
+from langchain_community.tools.tavily_search import TavilySearchResults
 from agent import LangGraphAgentEngine
 from dotenv import load_dotenv
 
@@ -17,40 +18,62 @@ load_dotenv()
 
 @tool
 async def get_financial_health(company_name: str):
-    """기업의 재무 건전성(매출, 영업이익 등)을 분석합니다. 다트(DART) 정보를 우선 탐색합니다."""
-    api_key = os.getenv("DART_API_KEY") or os.getenv("OPENADART_API_KEY")
-    # 실제 DART API 연동 로직이 있으면 좋지만, 여기선 Tavily를 활용한 검색 기반 분석 수행
+    """기업의 재무 건전성(매출, 영업이익 등)을 분석합니다. DART 및 뉴스를 검색합니다."""
     print(f"  [Financial] '{company_name}' 재무 분석 중...")
-    search = TavilySearch(max_results=5)
-    query = f"{company_name} 매출액 영업이익 최근 3년 재무제표 DART 공시"
+    search = TavilySearchResults(max_results=5)
+    # 쿼리를 구체화하여 재무 데이터를 더 잘 가져오도록 수정
+    query = f"{company_name} 최근 3년 매출액 영업이익 당기순이익 DART 공시 리포트"
     try:
         results = await search.ainvoke(query)
-        return {"company": company_name, "financial_summary": results[0].get('content') if results else "정보 없음"}
-    except Exception as e: return f"재무 조회 실패: {e}"
+        return {"company": company_name, "financial_summary": [r.get('content') for r in results] if results else "정보 없음"}
+    except Exception as e: 
+        print(f"    >> 재무 조회 에러: {e}")
+        return f"재무 조회 실패: {e}"
 
 @tool
 async def search_jobs(role: str, experience: str, location: str, keywords: str):
     """
-    다양한 채용 사이트(사람인, 원티드, 캐치, 잡플래닛, 인디스워크, 링크드인 등)에서 공고를 검색합니다.
+    데이터 분석/사이언티스트 직무 위주로 공고를 검색하며, 라벨링 등 단순 업무는 제외합니다.
     """
-    print(f"  [Recruiter] '{keywords}' 기반 공고 광범위 검색 중...")
-    search = TavilySearch(max_results=40)
-    # 여러 사이트를 포함한 쿼리 구성
+    # 사용자가 DA/DS로 고정하길 원함
+    fixed_role = "데이터 분석가 OR 데이터 사이언티스트 OR Data Analyst OR Data Scientist"
+    exclude_keywords = "-머신러닝 엔지니어 -LLM 개발자 -라벨링 -수집알바 -단순입력 -labeling"
+    
+    print(f"  [Recruiter] '{keywords}' 기반 전문 직무 공고 검색 중...")
+    search = TavilySearchResults(max_results=50) # 결과 수 대폭 증가
+    
     sites = "site:saramin.co.kr OR site:wanted.co.kr OR site:catch.co.kr OR site:jobplanet.co.kr OR site:jumpit.co.kr OR site:linkedin.com OR site:rememberapp.co.kr"
-    query = f"{role} {experience} {location} {keywords} 채용 ({sites})"
-    results = await search.ainvoke(query)
-    return results
+    query = f"({fixed_role}) {experience} {location} {keywords} {exclude_keywords} 채용공고 ({sites})"
+    
+    try:
+        results = await search.ainvoke(query)
+        return results
+    except Exception as e:
+        print(f"    >> 공고 검색 에러: {e}")
+        return f"검색 중 오류 발생: {e}"
 
 @tool
 async def get_company_reputation(company_name: str):
-    """잡플래닛, 블라인드 등에서 기업의 평점과 리뷰 총평을 분석합니다."""
-    print(f"  [Reputation] '{company_name}' 평판 및 리뷰 분석 중...")
-    search = TavilySearch(max_results=5)
-    query = f"site:jobplanet.co.kr OR site:teamblind.com \"{company_name}\" 리뷰 평점 장단점 총평"
+    """잡플래닛 평점 및 리뷰 요약을 가져옵니다."""
+    print(f"  [Reputation] '{company_name}' 평판 분석 중...")
+    
+    # 잡플래닛 내부 검색 JSON API 형태를 모사하거나, 검색 엔진을 통해 직접 평점 추출 시도
+    search = TavilySearchResults(max_results=5)
+    # 평점을 직접 찾기 위한 구체적 쿼리
+    query = f"site:jobplanet.co.kr \"{company_name}\" 평점 별점 장점 단점"
+    
     try:
         results = await search.ainvoke(query)
-        return {"company": company_name, "reputation": [r.get('content') for r in results]}
-    except Exception as e: return f"평판 조회 에러: {e}"
+        reputation_data = []
+        for r in results:
+            content = r.get('content', '')
+            # 평점(예: 3.5) 같은 패턴이 있는지 확인 가능 (LLM이 나중에 처리)
+            reputation_data.append(content)
+        
+        return {"company": company_name, "reputation": reputation_data}
+    except Exception as e:
+        print(f"    >> 평판 조회 에러: {e}")
+        return f"평판 조회 에러: {e}"
 
 @tool
 async def save_job_search_report(report_content: str, filename: str = "job_search_results.md"):
@@ -65,40 +88,39 @@ async def save_job_search_report(report_content: str, filename: str = "job_searc
 # [2. 전문가 페르소나 설정]
 # =====================================================================
 HUNTER_PROMPT = """
-당신은 '대한민국 최고의 채용 데이터 분석가이자 전략 헤드헌터'입니다.
-사용자가 제공한 조건을 바탕으로 모든 채용 플랫폼을 샅샅이 뒤져 최적의 공고 리스트를 생성하는 것이 당신의 목표입니다.
+당신은 '데이터 전문 커리어 헤드헌터'입니다. 
+당신의 임무는 사용자가 원하는 **데이터 분석가(DA) 및 데이터 사이언티스트(DS)** 직무의 공고를 완벽하게 찾아내어 리포트를 만드는 것입니다.
+
+[필수 지침]:
+1. **직무 고정**: 반드시 '데이터 분석', '데이터 사이언티스트', '머신러닝 엔지니어' 등 전문 데이터 직무에만 집중하세요.
+2. **필터링**: 유사해서 헷갈릴 수 있지만 머신러닝 엔지니어 직무, LLM 개발 직무 제외하고, 단순 데이터 라벨링, 데이터 수집 알바, AI 학습 데이터 구축 등 단순 반복 업무는 **반드시 제외**하세요.
+3. **도구 활용**: `search_jobs`로 공고를 찾은 뒤, 리스트업된 기업들에 대해 `get_financial_health`와 `get_company_reputation`을 사용하여 내실을 확인하세요.
+4. **리포트 품질 및 구조 (엄격 준수)**:
+   - 다음 표 형식을 반드시 유지하세요:
+     | 기업 이름 | 공고 내용 (직무/요건 요약) | 재무 요약 (DART 등) | 평판 상세 (잡플래닛 등) | 링크/기타 |
+   - **재무 요약**: 최근 매출액, 영업이익 등 구체적 수치를 포함하세요.
+   - **평판 상세**: 
+     * **총점**: (예: 3.5/5.0)
+     * **장점**: 핵심 장점 요약
+     * **단점**: 핵심 단점 요약
+     * **총평**: 전반적인 근무 환경 및 분위기 요약
+   - 도구 에러가 발생하더라도 검색 결과를 바탕으로 최대한 정보를 찾아 기재하세요.
 
 [상세 조건]:
-- 희망 직군: {role}
 - 경력 사항: {experience}
 - 희망 지역: {location}
 - 추가 키워드: {keywords}
-
----
-[업무 프로세스]
-1. [광범위 공고 검색]: `search_jobs`를 사용하여 제시된 조건과 관련된 모든 공고를 최대한 수집하세요.
-2. [공고 선별 및 상세 분석]: 수집된 공고 중 사용자의 조건에 부합하는 기업들을 리스트업하고, 주요 기업들에 대해 `get_financial_health`(재무) 및 `get_company_reputation`(평판)을 수행하세요.
-3. [종합 리포트 생성]: 다음 형식을 포함하는 마크다운 표 형태의 리포트를 작성하세요.
-   - | 기업 이름 | 공고 내용 (직무, 주요 업무, 자격 요건 등 상세히) | 재무/평판 요약 | 링크/기타 정보 |
-   - 각 기업의 '공고 내용'은 사용자가 판단하기 좋게 구체적으로 요약하세요.
-   - '재무/평판 요약'은 잡플래닛 평점과 DART 재무 요약을 포함해야 합니다.
-4. [저장]: 생성된 리포트를 `save_job_search_report` 도구를 사용해 저장하세요.
-5. [완료 보고]: 저장된 파일명과 함께 요약된 결과를 사용자에게 보고하세요.
-
-**주의 사항**:
-- 절대 허구의 공고를 만들어내지 마세요. 검색 결과에 기반해야 합니다.
-- 최대한 많은 유효 공고를 찾아내어 리스트에 포함시키세요.
-- 한 기업에만 집중하지 말고, 조건에 맞는 '모든' 공고를 다루려고 노력하세요.
 """
 
 async def run_job_hunter():
     print("\n" + "="*60)
-    print(" 🔍 스마트 채용 공고 헌터 (전체 사이트 통합 검색)")
+    print(" 🔍 전문 데이터 직무 헌터 (DA/DS 전용)")
     print("="*60)
-    role = input("1. 찾는 직군 (예: 데이터 분석가): ")
-    experience = input("2. 경력 (예: 신입, 3년차 이하): ")
-    location = input("3. 희망 지역 (예: 서울/경기): ")
-    keywords = input("4. 검색 키워드 (예: 파이썬, SQL, AI): ")
+    # 직군은 DA/DS로 고정하므로 질문 생략 가능하지만 사용자 경험 위해 유지 가능
+    role = "데이터 분석가 / 데이터 사이언티스트" 
+    experience = input("1. 경력 (예: 신입, 3년차 이하): ")
+    location = input("2. 희망 지역 (예: 서울/경기): ")
+    keywords = input("3. 핵심 기술 키워드 (예: Python, Tableau, PyTorch): ")
     
     print("\n" + "-"*60)
     model_choice = input("어떤 AI 모델을 사용할까요? (1: Gemini(무료), 2: GPT-5-mini(유료)): ")
@@ -106,7 +128,6 @@ async def run_job_hunter():
     print("-"*60)
 
     final_prompt = HUNTER_PROMPT.format(
-        role=role, 
         experience=experience, 
         location=location, 
         keywords=keywords
@@ -118,15 +139,14 @@ async def run_job_hunter():
         system_prompt=final_prompt
     )
     
-    user_request = f"모든 채용 사이트에서 '{keywords}' 관련 공고를 다 찾아보고, 재무/평판까지 분석해서 표 형식으로 정리해줘."
+    user_request = f"'{location}' 지역의 '{experience}' 수준 '{keywords}' 관련 DA/DS 공고를 모두 찾아보고, 라벨링 알바는 제외해서 리포트 써줘."
     
-    print(f"\n[공고 수집 및 분석 시작...]\n" + "-"*60)
+    print(f"\n[전문 데이터 공고 분석 시작...]\n" + "-"*60)
 
     async for event in agent.run(user_request):
         for node_name, content in event.items():
             for msg in content.get("messages", []):
                 if msg.content:
-                    # 너무 길면 잘라서 출력
                     content_str = msg.content
                     if len(content_str) > 1000:
                         content_str = content_str[:1000] + "..."
