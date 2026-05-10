@@ -33,24 +33,36 @@ async def get_financial_health(company_name: str):
 @tool
 async def search_jobs(role: str, experience: str, location: str, keywords: str):
     """
-    데이터 분석/사이언티스트 직무 위주로 공고를 검색하며, 라벨링 등 단순 업무는 제외합니다.
+    데이터 분석/사이언티스트 직무 위주로 현재 채용 중인 공고를 검색하며, 라벨링 등 단순 업무는 제외합니다.
     """
-    # 사용자가 DA/DS로 고정하길 원함
     fixed_role = "데이터 분석가 OR 데이터 사이언티스트 OR Data Analyst OR Data Scientist"
-    exclude_keywords = "-머신러닝 엔지니어 -LLM 개발자 -라벨링 -수집알바 -단순입력 -labeling"
-    
-    print(f"  [Recruiter] '{keywords}' 기반 전문 직무 공고 검색 중...")
-    search = TavilySearchResults(max_results=50) # 결과 수 대폭 증가
-    
-    sites = "site:saramin.co.kr OR site:wanted.co.kr OR site:catch.co.kr OR site:jobplanet.co.kr OR site:jumpit.co.kr OR site:linkedin.com OR site:rememberapp.co.kr"
-    query = f"({fixed_role}) {experience} {location} {keywords} {exclude_keywords} 채용공고 ({sites})"
-    
-    try:
-        results = await search.ainvoke(query)
-        return results
-    except Exception as e:
-        print(f"    >> 공고 검색 에러: {e}")
-        return f"검색 중 오류 발생: {e}"
+    exclude_keywords = "-라벨링 -수집알바 -단순입력 -labeling -마감 -종료"
+    current_year = "2026" # 현재 날짜 기반 연도 추가
+
+    print(f"  [Recruiter] '{keywords}' 기반 최신 공고 전수 조사 중...")
+    # Tavily 검색 결과수를 최대(20)로 설정하고, 쿼리를 여러 번 나눠서 실행하여 검색량을 확보
+    search = TavilySearchResults(max_results=20)
+
+    # 여러 채용 사이트를 타겟팅하는 쿼리 조합
+    queries = [
+        f"({fixed_role}) {experience} {location} {keywords} {exclude_keywords} {current_year} 채용공고 site:wanted.co.kr OR site:rememberapp.co.kr",
+        f"({fixed_role}) {experience} {location} {keywords} {exclude_keywords} {current_year} 채용공고 site:saramin.co.kr OR site:jobkorea.co.kr",
+        f"({fixed_role}) {experience} {location} {keywords} {exclude_keywords} {current_year} 채용공고 site:catch.co.kr OR site:jumpit.co.kr"
+    ]
+
+    all_results = []
+    for q in queries:
+        try:
+            res = await search.ainvoke(q)
+            if isinstance(res, list):
+                all_results.extend(res)
+        except Exception as e:
+            print(f"    >> 검색 쿼리 에러: {e}")
+
+    # URL 중복 제거
+    unique_results = {r.get('url'): r for r in all_results if r.get('url')}.values()
+    return list(unique_results)
+
 
 @tool
 async def get_company_reputation(company_name: str):
