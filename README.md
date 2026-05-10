@@ -1,128 +1,67 @@
-# 🚀 Resume & Job Hunter AI Agent (LangGraph + GPT-5-mini)
+# 🚀 AI 커리어 어시스턴트: 통합 채용 솔루션 (LangGraph + GPT/Gemini)
 
-이 프로젝트는 **LangGraph**와 **GPT-5-mini / Gemini 1.5 Pro**를 활용하여 사용자의 이력서와 기업의 재무/평판 데이터를 분석하고, 최적의 채용 공고 선정부터 맞춤형 자기소개서 작성, 면접 가이드까지 제공하는 고도화된 AI 에이전트 시스템입니다.
+이 프로젝트는 **LangGraph**를 기반으로 한 두 개의 전문 에이전트(**Job Hunter**, **Resume Reviser**)를 통해, 채용 공고 탐색부터 최종 서류 작성 및 면접 전략 수립까지의 전 과정을 자동화하고 최적화합니다.
 
-## 🏗️ 프로젝트 구조
+## 🏗️ 시스템 아키텍처
 
-프로젝트는 **엔진(Engine)**과 **어플리케이션(Application)** 레이어로 분리되어 설계되었습니다.
+본 프로젝트는 역할 분리(Separation of Concerns)를 통해 각 단계의 전문성과 정확도를 극대화했습니다.
 
-*   **`agent.py` (Engine Layer)**: 
-    *   LangGraph를 활용한 범용 에이전트 오케스트레이션 엔진입니다.
-    *   상태 관리(State), 모델 호출 로직, 도구 실행(Tool Execution) 순환 구조를 캡슐화한 **슈퍼클래스/뼈대** 역할을 합니다. 
-    *   Gemini와 GPT-5-mini 간의 선택적 구동을 지원합니다.
-*   **`job_hunter.py` (Application Layer)**: 
-    *   `agent.py` 엔진을 상속/활용하여 채용 컨설팅이라는 구체적인 업무를 수행합니다.
-    *   로컬 데이터(이력서, 가이드라인)를 로드하고 채용 관련 특화 도구들을 주입합니다.
+### 1. 🔍 Job Hunter Agent (`job_hunter.py`)
+*   **목적**: 모든 채용 플랫폼을 대상으로 사용자의 조건에 맞는 '모든' 공고를 수집하고 분석합니다.
+*   **특징**: 
+    *   사람인, 원티드, 캐치, 잡플래닛, 링크드인 등 7개 이상의 주요 사이트 통합 검색.
+    *   DART(재무) 및 잡플래닛/블라인드(평판) 데이터를 결합하여 기업의 내실 분석.
+    *   수집된 모든 정보를 마크다운 표 형식의 리포트로 생성 (`result/job_search_results.md`).
 
----
-
-## ✨ 핵심 고도화 및 설계 의도
-
-단순히 공고를 긁어오는 수준을 넘어, **"AI가 마음대로 지어내는 거짓말(Hallucination)"**을 막고 사용자의 **"실제 커리어 철학"**이 담긴 결과물을 만들도록 설계되었습니다.
-
-### 1. 로컬 데이터 컨텍스트 연동 (`load_user_context`)
-*   **의도**: 에이전트가 외부 공고 정보만 보고 답변하는 것이 아니라, 사용자의 실제 데이터(`knowledge/`, `more_info/`, `self_introduction/`)를 먼저 학습하도록 강제합니다.
-*   **구조**: 폴더별로 이력서, 작성 가이드, 과거 자소서를 분리하여 관리함으로써 에이전트가 상황에 맞는 정확한 근거 데이터를 참조할 수 있습니다.
-
-### 2. 강력한 프롬프트 엔지니어링 (Hallucination 및 뻔한 멘트 차단)
-*   **의도**: JD에 맞추기 위해 사용자의 이력을 허위로 부풀리거나, "귀사의 비전에 감명받았다" 같은 영혼 없는 멘트가 생성되는 것을 방지합니다.
-*   **설계**: `more_info/guideline.txt`에 적힌 사용자의 가치관(예: '데이터를 통한 정답 도출의 즐거움')을 자소서의 메인 테마로 삼도록 명령합니다. 또한, 이력서에 없는 기술이나 프로젝트 언급 시 엄격하게 차단하도록 설계되었습니다.
-
-### 3. 멀티 스테이지 파이프라인 및 특화 도구
-*   **의도**: 정보 수집과 문서 작성을 분리하여 결과물의 퀄리티를 높입니다.
-*   **기능**: 
-    *   `get_financial_health`: 겉보기에만 화려한 기업이 아닌, 실제 내실(재무 상태)을 보고 지원 여부를 결정할 수 있게 돕습니다.
-    *   `save_cover_letter`: 분석 리포트와 실제 제출용 자소서를 분리하여, 사용자가 `result/` 폴더에서 즉시 제출 가능한 문서를 확인할 수 있게 편의성을 극대화했습니다.
+### 2. ✍️ Resume Reviser Agent (`revise_resume.py`)
+*   **목적**: 선택한 공고에 맞춰 사용자의 이력서와 자기소개서를 정교하게 수정합니다.
+*   **특징**:
+    *   **강력한 가드레일**: `knowledge/`와 `more_info/` 데이터를 기반으로 허구(Hallucination) 생성을 원천 차단.
+    *   **JD 매칭**: 채용 공고의 요구사항을 분석하여 사용자의 실제 경험을 기업의 언어로 재해석.
+    *   **면접 전략**: 작성된 서류를 바탕으로 한 예상 질문 및 답변 포인트 제공.
 
 ---
 
-## 🛠️ 설치 및 사용법 (Step-by-Step)
+## 🛡️ 가드레일 (Guardrails) 및 환각 방지 전략
 
-### 1. 저장소 복제 (Git Clone)
-먼저 프로젝트를 로컬 환경으로 가져옵니다.
+AI 에이전트가 흔히 저지르는 '없는 경력 지어내기'나 '영혼 없는 찬양'을 방지하기 위해 다음과 같은 장치를 마련했습니다.
+
+### 1. `/knowledge` (나의 사실적 데이터베이스)
+*   에이전트는 이 폴더 내의 파일들(`resume.txt`, `career.docx` 등)에 명시된 프로젝트, 기술, 경력 사항만 사용할 수 있습니다.
+*   이력서에 없는 기술이나 경력이 JD에 있다고 해서 이를 거짓으로 추가하지 않도록 프롬프트 수준에서 엄격히 통제됩니다.
+
+### 2. `/more_info` (나의 커리어 철학 및 가이드라인)
+*   **작성 스타일**: "간결하고 데이터 중심적인 문체", "인사이트 도출을 강조하는 서술" 등 사용자가 원하는 톤앤매너를 설정합니다.
+*   **가치관 주입**: 단순한 기업 찬양 대신, 사용자가 평소 중요하게 생각하는 직업적 가치(예: '효율적인 협업의 즐거움', '기술적 난제 해결의 쾌감')를 자소서의 메인 테마로 활용하게 합니다.
+
+---
+
+## 🛠️ 사용 방법
+
+### 1. 환경 설정
+`.env` 파일에 필요한 API 키를 설정합니다. (OpenAI, Google Gemini, Tavily, DART)
+
+### 2. 데이터 준비
+*   `knowledge/`: 자신의 원본 이력서 또는 경력기술서 파일(.txt 권장)을 넣습니다.
+*   `more_info/`: `guideline.txt` 파일에 자신이 선호하는 자소서 작성 원칙이나 강조하고 싶은 가치관을 적습니다.
+
+### 3. 프로그램 실행
 ```bash
-git clone <repository_url>
-cd resum
+python main.py
 ```
-
-### 2. 환경 설정 및 패키지 설치 (UV 사용)
-현대적인 파이썬 패키지 관리자인 `uv`를 사용합니다.
-```bash
-# uv 초기화 및 가상환경 생성
-uv init
-uv venv
-
-# 필수 라이브러리 설치
-uv pip install langchain-openai langchain-google-genai langgraph python-dotenv aiohttp langchain-tavily
-```
-### 3. API 키 설정 (.env)
-루트 디렉토리에 `.env` 파일을 생성하고 필요한 API 키를 입력합니다.
-
-| API 키 명칭 | 유형 | 주요 장점 | 사용 조건 및 제약 | 발급처 |
-| :--- | :--- | :--- | :--- | :--- |
-| `GOOGLE_AI_API_KEY` | **무료 (Tier)** | 고성능 모델(Gemini 1.5 Pro) 무료 이용 가능, 긴 컨텍스트 지원 | 분당 요청 수(RPM) 및 일일 요청 수(RPD) 제한 존재 | [Google AI Studio](https://aistudio.google.com/) |
-| `OPENAI_API_KEY` | **유료 (종량제)** | GPT-5-mini의 압도적 가성비와 지능, 에이전트 작업 최적화 | 선불 크레딧 충전 필요 (1년 유효기간), 사용한 만큼 차감 | [OpenAI Platform](https://platform.openai.com/) |
-| `TAVILY_API_KEY` | **무료/유료** | LLM 검색에 최적화된 결과물(광고 제외, 깨끗한 텍스트) 제공 | 무료 티어 기준 월별 검색 크레딧 제한 존재 | [Tavily AI](https://tavily.com/) |
-| `DART_API_KEY` | **무료** | 대한민국 금융감독원 공식 재무 데이터 및 공시 정보 제공 | 일일 호출 한도(약 1만 건) 존재, 기업별 고유번호 관리 필요 | [OpenDART](https://opendart.fss.or.kr/) |
+1.  **메뉴 1번(Job Hunter)**을 선택하여 현재 시장의 공고를 싹 긁어 리포트를 만듭니다.
+2.  리포트(`result/job_search_results.md`)를 확인하고 지원하고 싶은 기업의 공고 내용을 복사합니다.
+3.  **메뉴 2번(Resume Reviser)**을 선택하여 해당 기업명과 공고 내용을 입력하면, 나만의 맞춤형 서류가 `result/revised/` 폴더에 생성됩니다.
 
 ---
 
-## 🐳 고급 설정: 로컬 LLM 및 Docker 사용법
-
-### 1. 로컬 LLM 연동 (Ollama 활용)
-클라우드 API 대신 내 컴퓨터의 자원을 사용하고 싶다면 **Ollama**를 통해 로컬 모델을 서빙할 수 있습니다.
-
-*   **준비**: [Ollama](https://ollama.com/) 설치 후 `ollama run llama3.1` (또는 최신 모델) 실행
-*   **코드 수정 (`agent.py`)**:
-    ```python
-    from langchain_community.chat_models import ChatOllama
-
-    # OpenAI 대신 로컬 모델 사용 시
-    self.llm = ChatOllama(model="llama3.1", base_url="http://localhost:11434").bind_tools(self.tools)
-    ```
-
-### 2. Docker 이미지 빌드 및 실행
-환경에 구애받지 않고 실행하기 위해 도커를 사용할 수 있습니다.
-
-*   **Dockerfile 생성**:
-    ```dockerfile
-    FROM python:3.11-slim
-    COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
-    WORKDIR /app
-    COPY . .
-    RUN uv pip install --system -r requirements.txt
-    CMD ["python", "job_hunter.py"]
-    ```
-*   **실행**:
-    ```bash
-    docker build -t job-hunter-agent .
-    docker run --env-file .env job-hunter-agent
-    ```
+## 🤖 모델 선택 가이드
+*   **Gemini 1.5 Pro**: 무료 티어로 이용 가능하며, 방대한 양의 검색 결과를 처리할 때 유리합니다.
+*   **GPT-5-mini**: 논리적인 문장 구성과 JD-이력서 간의 세밀한 매칭 능력이 뛰어납니다. (추천)
 
 ---
 
-### 4. 사용자 데이터 준비
-에이전트가 나를 알 수 있도록 데이터를 폴더에 넣어주세요. (현재는 `.txt` 파일 지원)
-*   `knowledge/resume.txt`: 나의 상세 이력서
-*   `more_info/guideline.txt`: 내가 지향하는 자소서 작성 방향성 및 철학
-*   `self_introduction/`: 과거에 썼던 자소서 샘플들
-
-### 5. 코드 실행
-```bash
-python job_hunter.py
-```
-실행 후 터미널의 안내에 따라 직군, 경력, 지역 조건을 입력하고 사용할 AI 모델을 선택하세요.
-
----
-
-## 🤖 AI 모델 가이드 (2026.05 기준)
-
-*   **Gemini 1.5 Pro**: 구글의 무료 티어를 활용하며 일반적인 분석에 적합합니다.
-*   **GPT-5-mini**: 2026년 기준 가장 가성비가 뛰어난 모델입니다. (기존 GPT-4o 대비 10배 저렴하며, 일일 사용 한도가 55배 더 넉넉함)
-
----
-
-## 📂 결과물 (Result)
-분석이 완료되면 `result/` 폴더에 다음과 같은 결과물이 생성됩니다.
-*   `{기업명}_cover_letter.md`: 내 철학이 담긴 맞춤형 자소서
-*   `{기업명}_final_guide.md`: 재무/평판 분석 및 면접 준비 가이드
+## 📂 주요 결과물
+*   `result/job_search_results.md`: 통합 공고 분석 리포트
+*   `result/revised/{기업명}_cover_letter.md`: 맞춤형 자기소개서
+*   `result/revised/{기업명}_resume_strategy.md`: 이력서 보완 및 면접 전략 가이드
