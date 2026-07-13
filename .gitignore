@@ -25,3 +25,25 @@ wheels/
 .vscode/
 resume.pdf
 
+# 로컬 에이전트 스킬/플러그인/설정 무시 (AGENTS.md §6 정책)
+.agents/
+.codex/
+.antigravitycli/
+.claude/settings.local.json
+
+# 생성 결과물 및 개인정보 무시 (커밋 금지)
+result/
+self_introduction/
+
+# 개인 자료 폴더는 전체 무시하되, 공개 샘플은 예외로 추적 허용
+knowledge/*
+!knowledge/resume_example.txt
+more_info/*
+
+# 인접 참고 프로젝트는 이 저장소에 포함하지 않음
+quantitative_trading/
+
+# README에 사용하는 아키텍처 다이어그램은 상위 *.png 무시 규칙에서 예외 처리
+!images/
+!images/*.png
+

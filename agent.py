@@ -44,8 +44,11 @@ class LangGraphAgentEngine:
             print("[System] 메인 모델로 GPT-5-mini를 사용합니다. (유료 토큰 소모)")
             self.llm = ChatOpenAI(model="gpt-5-mini", temperature=0).bind_tools(self.tools)
         else:
-            print("[System] 메인 모델로 Gemini 1.5 Pro를 사용합니다. (무료 티어)")
-            self.llm = ChatGoogleGenerativeAI(model="gemini-1.5-pro", temperature=0).bind_tools(self.tools)
+            # gemini-1.5-pro는 2025-09-24부로 서비스 종료되어 호출 시 에러를 반환한다.
+            # 현행 무료/저가 모델인 gemini-2.0-flash로 교체한다. (env GEMINI_MODEL로 재정의 가능)
+            gemini_model = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
+            print(f"[System] 메인 모델로 Gemini({gemini_model})를 사용합니다. (무료 티어)")
+            self.llm = ChatGoogleGenerativeAI(model=gemini_model, temperature=0).bind_tools(self.tools)
         
         # 도구 실행 시 이름으로 빠르게 조회하기 위해 딕셔너리로 관리합니다.
         self.tools_dict = {t.name: t for t in self.tools}

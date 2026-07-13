@@ -1,6 +1,6 @@
 import asyncio
 import os
-from langchain_tavily import TavilySearchResults
+from langchain_tavily import TavilySearch
 from dotenv import load_dotenv
 
 # =====================================================================
@@ -14,7 +14,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 async def fetch_jobs():
-    search = TavilySearchResults(max_results=30)
+    search = TavilySearch(max_results=30)
     fixed_role = "데이터 분석가 OR 데이터 사이언티스트 OR Data Analyst OR Data Scientist"
     exclude_keywords = "-라벨링 -수집알바 -단순입력 -labeling"
     experience = "신입 3년차 이하"
@@ -25,7 +25,9 @@ async def fetch_jobs():
     query = f"({fixed_role}) {experience} {location} {keywords} {exclude_keywords} 채용 ({sites})"
     
     try:
-        results = await search.ainvoke(query)
+        # langchain_tavily.TavilySearch는 {"results": [...]} 형태의 dict를 반환한다.
+        response = await search.ainvoke(query)
+        results = response.get("results", []) if isinstance(response, dict) else response
         for idx, r in enumerate(results):
             print(f"--- RESULT {idx+1} ---")
             print(f"URL: {r.get('url')}")
