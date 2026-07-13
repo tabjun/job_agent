@@ -1,5 +1,10 @@
 # history.md
 
+## 2026-07-13
+
+- 브랜치 작업 규칙 명문화: `resum/` 작업은 **`job_agent` 브랜치에서만** 수행하고, 머지 흐름은 **`job_agent` → `develop` → `main`**. `AGENTS.md §6`(강제), `process.md`(승격 명령 예시), `CLAUDE.md`(세션 시작 포인터)에 반영. 별도 feature/fix 브랜치 금지.
+- 브랜치 정리: 앞서 나눴던 `fix/agent1-runnable`·`docs/handoff-and-architecture`·`feat/agent3-site-sync` 3개 브랜치를 `job_agent`로 선형 통합(ff-merge + cherry-pick) 후 삭제. 로컬 브랜치는 `main`·`develop`·`job_agent`·`stock`만 유지. `origin/job_agent`에 푸시 완료.
+
 ## 2026-07-01
 
 - `.gitignore` 보강: `.agents/`, `.codex/`, `.antigravitycli/`, `.claude/settings.local.json`, `result/`, `self_introduction/`, `quantitative_trading/`를 명시적으로 무시. `knowledge/`는 `resume_example.txt`만 예외 추적, `more_info/`는 전체 무시.

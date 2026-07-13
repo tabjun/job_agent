@@ -22,8 +22,16 @@
 
 ## Git 운용
 
+- **브랜치: `resum/` 작업은 `job_agent`에서만 한다. 머지는 `job_agent` → `develop` → `main` 순.** (강제 규칙은 `AGENTS.md §6` 참조)
+  - 승격 예시:
+    ```bash
+    git checkout develop && git merge --ff-only job_agent   # 1단계 승격
+    git checkout main && git merge --ff-only develop         # 2단계 승격
+    git checkout job_agent                                   # 작업 브랜치로 복귀
+    ```
+  - 별도 feature/fix 브랜치를 파지 않는다. 커밋은 `job_agent`에 선형으로 쌓는다.
 - `.agents/`, `.codex/`, `.claude/settings.local.json`은 로컬 도구 설정이므로 커밋하지 않는다.
-- `quantitative_trading/`은 별도 프로젝트로 보고 이 저장소 커밋에 포함하지 않는다.
+- `quantitative_trading/`, `../stock`은 별도 프로젝트로 보고 이 저장소 커밋에 포함하지 않는다.
 - 개인정보, 원본 이력서, 생성 결과물, 키 파일은 커밋하지 않는다.
 
 ## 향후 아키텍처: 슈퍼바이저(분류) + 전문 에이전트 (설계만, 미구현)

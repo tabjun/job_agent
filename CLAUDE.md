@@ -12,9 +12,14 @@
 
 로컬 스킬과 플러그인 캐시는 `.agents/`, `.codex/`, `.claude/settings.local.json`에 둘 수 있지만 Git에 커밋하지 않는다.
 
+## 브랜치 규칙 (강제)
+
+- 이 프로젝트(`resum/`) 작업은 **`job_agent` 브랜치에서만** 수행한다. 별도 feature/fix 브랜치를 파지 않는다.
+- 머지 흐름은 **`job_agent` → `develop` → `main`**. 상세는 `AGENTS.md §6`, `process.md` 참조.
+
 ## Codex와의 인계 규칙
 
-- 작업 시작 전 `git status --short --branch`를 확인한다.
+- 작업 시작 전 `git status --short --branch`를 확인한다. `job_agent`가 아니면 먼저 체크아웃한다.
 - Codex가 남긴 미커밋 변경은 사용자 작업으로 보고 임의로 되돌리지 않는다.
 - 의미 있는 변경 후에는 `history.md`에 변경 요약을 추가한다.
 - 다음 작업자가 알아야 할 사용자 의도, 남은 TODO, 주의점은 `conversation_l2_cache.md`에 압축해서 남긴다.
