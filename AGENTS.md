@@ -32,8 +32,8 @@
 아키텍처는 3개 에이전트 파이프라인이다(다이어그램: `images/project_archi.png`, 상세: `README.md`).
 
 - **Agent 1 (Job Search & Resume Reviser)**: `job_hunter.py`(공고 탐색·기업분석, 실행 가능), `revise_resume.py`(이력서/자소서 맞춤화)
-- **Agent 2 (Master Resume Builder)**: 설계 단계, 전용 파일 아직 없음. 목표는 `knowledge/` 사실을 정규화한 `master_resume.yaml` 단일 원천 관리
-- **Agent 3 (ResumeOps Sync)**: `site_resume_agent.py`, `site_form_mapper.py`, `site_form_connector.py`(사이트별 규격 변환·폼 매핑, Playwright 반자동 — 로그인·최종저장은 사용자)
+- **Agent 2 (Master Resume Builder)**: `resume_source.py`, `resume_library.py`(명시 선택 DOCX 추출·문단 근거 연결·검수된 공통 이력서 JSON/Markdown 컴파일). 완전 자율 사실 정규화나 문장 사실성 자동 판정은 미구현이며, 원문 검수가 필요하다.
+- **Agent 3 (ResumeOps Sync)**: `site_resume_agent.py`, `site_form_mapper.py`, `site_form_connector.py`, `site_form_filler.py`(사이트별 규격 변환·DOM 수집·폼 매핑·검수된 필드 입력, Playwright 반자동 — 로그인·최종저장은 사용자)
 - 공용 엔진: `agent.py`(`LangGraphAgentEngine`)
 - LangChain/LangGraph 예제 및 실험: `langchain_agent.py`, `langgraph_agent.py`
 - 기타 실험: `construction_agent.py`
@@ -61,6 +61,7 @@
 - **머지 흐름은 `job_agent` → `develop` → `main`** 순서다. 다른 방향(예: `main`에서 직접 작업, `job_agent`에서 `main`으로 직행)은 금지한다.
 - 커밋은 `job_agent`에 선형으로 쌓고, 승격이 필요할 때만 `develop`으로, 검증 후 `main`으로 머지한다.
 - 인접 폴더(`../stock`, `../quantitative_trading`)는 이 프로젝트 작업 범위 밖이며 `job_agent` 커밋에 포함하지 않는다.
+- 사용자 재확인(2026-10-06): 작업 준비를 위해 `stock`, `main`, `develop`을 `job_agent`에 병합하지 않는다. 프로젝트 브랜치 전환과 다른 프로젝트 이력 통합을 혼동하지 않는다.
 
 ### 작업 시작
 

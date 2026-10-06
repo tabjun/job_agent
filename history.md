@@ -1,5 +1,27 @@
 # history.md
 
+## 2026-10-07
+
+- 사용자 지정 외부 취업 폴더의 최신 공통 이력서/경력기술서 등 6개 DOCX를 근거로 공통 이력서 8개 블록 및 사이트별 공통 패키지를 작성. 개인 corpus/검수 초안/산출물은 ignored `result/`에만 보관.
+- `resume_library.py` 추가: 명시 선택 DOCX 추출, SHA256 중복 제거, 원본 변경 및 추출문 변조 차단, 문단 참조 검증, 검수된 초안 컴파일. 의미상 사실성 판단은 수동 검수 범위다.
+- 인크루트 사용자 2단계 인증 완료 확인 후 기존 이력서 편집 조사·작성. 5개 사이트 실제 경력/소개 작성, 잡코리아 자기소개 및 캐치 상세 기술서 추가. 원티드 회사/날짜/졸업/전공 선택과 사용자 확인한 정규직 반영, 자동저장 새로고침 검증. `docs/resume_authoring.md`에 작성 및 미작성 범위 기록.
+- 실제 최신 원본 및 검수 master package의 로컬 Chromium 통합 포함 12개 테스트 통과. 사용자 요청으로 이 프로젝트 코드/문서/테스트 전부 커밋 및 `origin/job_agent` 일반 push 진행. 개인자료/다른 프로젝트는 제외, 다른 브랜치 병합 및 force push 금지 유지.
+
+## 2026-10-06
+
+- 사용자 지정 실제 DOCX로 `resume_source.py` 추가: 92개 원문 문단, 경력 572자/소개 392자, 문단 근거 및 SHA256 포함 사이트 패키지 생성. 개인 산출물은 ignored `result/source_resume_test/`에만 보관.
+- 로그인된 실제 화면에서 캐치/잡코리아/사람인 경력 및 원티드 소개 실입력·포커스 이동 후 readback 검증. 모두 테스트 전 값으로 복원. 원티드 자동저장 확인 및 복원 후 새로고침 검증. 최종 저장/지원 클릭 없음. 인크루트 2단계 인증 대기.
+- 입력기에 blur 후 검증 추가. 실제 DOCX → 패키지 → Python 입력기 로컬 Chromium 통합 포함 10개 테스트 통과. 실제 사이트 입력은 브라우저 도구를 사용했으며 Python CLI 사이트별 실행/전체 이력서 동기화는 미검증. `docs/real_source_test.md` 기록.
+
+- 작업 준비 중 만든 `origin/main` → `job_agent` 병합(`2d8a29b`)이 다른 프로젝트 이력을 포함한 문제를 사용자 지적에 따라 정정. 되돌림 커밋 `b05617b`로 병합 전 트리 복원, `resum/` 자동화 미커밋 변경은 stash 백업 후 그대로 복원. 정정 커밋은 로컬이며 원격 push는 수행하지 않음.
+
+- 사용자 요청에 따라 ALIO 연동 TODO 취소. 캐치·잡코리아·사람인·원티드 및 추가 요청한 인크루트 실제 화면 기반 자동화를 우선한다.
+- 폼 수집기에 전용 persistent 프로필, Enter 반복 수집, 팝업 탭/중첩 iframe/open shadow DOM, 유일 selector 및 제한값·선택지 기록 추가. 입력값은 기본 제외, password/hidden은 항상 제외.
+- 필드 연결에서 비편집·로그인용 필드 제외, contenteditable 지원, iframe/shadow 위치 보존, 동점/중복 목적지/글자수 초과 검토 표시 추가.
+- 사용자 로그인 후 캐치/잡코리아/사람인/원티드 기존 이력서 편집 DOM 조사 완료. `docs/site_form_observations.md`에 개인정보 없이 selector/제한/팝업/readonly 관찰 기록. 인크루트 로그인 후 이력서 관리에서 2단계 인증 대기.
+- `site_form_filler.py` 추가: 개별 검수 표시가 있는 필드만 실행, 기본은 검증만. 실입력은 `--apply`와 `APPLY` 필요. 실제 계정 값 변경/저장/제출은 수행하지 않음.
+- 검증: `python -m unittest discover -s tests -v` 6개 통과. 실제 로컬 Chromium DOM으로 중복 id, multiline placeholder, iframe/shadow, 값 제외, 입력 확인, 중복 대상 및 길이 초과 차단 검증.
+
 ## 2026-07-13
 
 - 브랜치 작업 규칙 명문화: `resum/` 작업은 **`job_agent` 브랜치에서만** 수행하고, 머지 흐름은 **`job_agent` → `develop` → `main`**. `AGENTS.md §6`(강제), `process.md`(승격 명령 예시), `CLAUDE.md`(세션 시작 포인터)에 반영. 별도 feature/fix 브랜치 금지.

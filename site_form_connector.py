@@ -39,6 +39,7 @@ def field_haystack(field: Dict[str, Any]) -> str:
         "autocomplete",
         "aria_label",
         "role",
+        "section",
         "selector",
     ]:
         parts.append(str(field.get(key, "")))
@@ -65,7 +66,7 @@ def flatten_package_values(package_payload: Dict[str, Any]) -> List[Dict[str, An
             for idx, child in enumerate(value):
                 walk((*prefix, str(idx)), child)
         else:
-            text = str(value or "").strip()
+            text = '' if value is None else str(value).strip()
             if text:
                 rows.append(
                     {
@@ -139,7 +140,12 @@ def candidate_fields(form_map_payload: Dict[str, Any]) -> List[Dict[str, Any]]:
     return [
         field
         for field in fields
-        if field.get("tag") in {"input", "textarea", "select"} or field.get("role")
+        if (field.get("tag") in {"input", "textarea", "select"}
+            or field.get("contenteditable") or field.get("role") in {"textbox", "combobox"})
+        and field.get('type') not in {'password', 'hidden', 'submit', 'button', 'reset', 'file', 'checkbox', 'radio'}
+        and field.get('visible', True)
+        and not field.get('disabled')
+        and not field.get('read_only')
     ]
 
 
@@ -152,7 +158,7 @@ def build_mapping(package_payload: Dict[str, Any], form_map_payload: Dict[str, A
         scored = []
         for browser_field in browser_fields:
             score, reasons = score_match(package_field, browser_field)
-            if score > 0:
+            if score > 0 and any(reason.startswith(('path_token:', 'category:')) for reason in reasons):
                 scored.append((score, reasons, browser_field))
         scored.sort(key=lambda item: item[0], reverse=True)
         best = scored[0] if scored else None
@@ -173,6 +179,12 @@ def build_mapping(package_payload: Dict[str, Any], form_map_payload: Dict[str, A
                     "labels": best[2].get("labels"),
                     "max_length": best[2].get("max_length"),
                     "visible": best[2].get("visible"),
+                    "frame_path": best[2].get('frame_path', []),
+                    "frame_url": best[2].get('frame_url'),
+                    "shadow_hosts": best[2].get('shadow_hosts', []),
+                    "selector_count": best[2].get('selector_count'),
+                    "section": best[2].get('section'),
+                    "group_selector": best[2].get('group_selector'),
                 }
                 if best
                 else None,
@@ -180,13 +192,29 @@ def build_mapping(package_payload: Dict[str, Any], form_map_payload: Dict[str, A
                     {
                         "score": score,
                         "selector": field.get("selector"),
+                        "frame_path": field.get('frame_path', []),
+                        "shadow_hosts": field.get('shadow_hosts', []),
                         "placeholder": field.get("placeholder"),
                         "labels": field.get("labels"),
                     }
                     for score, _reasons, field in scored[1:4]
                 ],
+                "review_reasons": (['ambiguous_candidates'] if len(scored) > 1 and scored[0][0] == scored[1][0] else [])
+                    + (['non_unique_selector'] if best and best[2].get('selector_count', 1) != 1 else [])
+                    + ([reason for reason in best[1] if reason.startswith('over_maxlength:')] if best else []),
             }
         )
+
+    destinations = {}
+    for item in mappings:
+        match = item['best_match']
+        if match:
+            key = (tuple(match['frame_path']), tuple(match['shadow_hosts']), match['selector'])
+            destinations.setdefault(key, []).append(item)
+    for items in destinations.values():
+        if len(items) > 1:
+            for item in items:
+                item['review_reasons'].append('shared_destination')
 
     return {
         "generated_at": datetime.now().isoformat(timespec="seconds"),
@@ -197,6 +225,7 @@ def build_mapping(package_payload: Dict[str, Any], form_map_payload: Dict[str, A
         "mapping_status": "review_required",
         "mappings": mappings,
         "unmatched_count": sum(1 for item in mappings if not item["best_match"]),
+        "review_count": sum(1 for item in mappings if item['review_reasons']),
         "notes": [
             "이 매핑은 selector 후보 계획이다. 실제 저장 전 브라우저 화면에서 사용자 검수가 필요하다.",
             "로그인 페이지에서 추출한 form map은 이력서 필드와 매칭되지 않을 수 있다.",

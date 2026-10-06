@@ -6,7 +6,9 @@ import re
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from html.parser import HTMLParser
+from pathlib import Path
 from typing import Dict, List, Optional
+from urllib.parse import urlparse
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
@@ -17,16 +19,12 @@ SITE_TARGETS: Dict[str, Dict[str, object]] = {
         "aliases": ["saramin", "사람인"],
         "candidate_urls": [
             "https://www.saramin.co.kr/zf_user/resume/resume-manage",
-            "https://www.saramin.co.kr/zf_user/resume/resume-write",
-            "https://www.saramin.co.kr/zf_user/member/persons-main",
         ],
     },
     "wanted": {
         "name": "Wanted",
         "aliases": ["wanted", "원티드"],
         "candidate_urls": [
-            "https://www.wanted.co.kr/profile",
-            "https://www.wanted.co.kr/profile/resume",
             "https://www.wanted.co.kr/cv/list",
         ],
     },
@@ -43,19 +41,20 @@ SITE_TARGETS: Dict[str, Dict[str, object]] = {
         "name": "Catch",
         "aliases": ["catch", "캐치"],
         "candidate_urls": [
-            "https://www.catch.co.kr/",
-            "https://www.catch.co.kr/NCS/Resume",
-            "https://www.catch.co.kr/Member/Resume",
+            "https://www.catch.co.kr/Member/ResumeList",
         ],
     },
     "jobkorea": {
         "name": "JobKorea",
         "aliases": ["jobkorea", "잡코리아"],
         "candidate_urls": [
-            "https://www.jobkorea.co.kr/User/Resume",
-            "https://www.jobkorea.co.kr/User/Resume/Write",
-            "https://www.jobkorea.co.kr/User/Resume/Manage",
+            "https://www.jobkorea.co.kr/User/ResumeMng",
         ],
+    },
+    "incruit": {
+        "name": "Incruit",
+        "aliases": ["incruit", "인크루트"],
+        "candidate_urls": ["https://www.incruit.com/"],
     },
     "linkedin": {
         "name": "LinkedIn",
@@ -252,54 +251,15 @@ def find_local_browser() -> Optional[str]:
     return None
 
 
-async def playwright_extract(site_key: str, headed: bool, wait_seconds: int, browser_path: Optional[str]) -> Dict[str, object]:
-    try:
-        from playwright.async_api import async_playwright
-    except ImportError as exc:
-        raise SystemExit(
-            "Playwright is not installed. Run:\n"
-            "  uv add playwright\n"
-            "  uv run playwright install chromium\n"
-            "Then rerun this command."
-        ) from exc
-
-    target = SITE_TARGETS[site_key]
-    start_url = str(target["candidate_urls"][0])
-
-    async with async_playwright() as p:
-        launch_options = {"headless": not headed}
-        executable_path = browser_path or find_local_browser()
-        if executable_path:
-            launch_options["executable_path"] = executable_path
-        browser = await p.chromium.launch(**launch_options)
-        context = await browser.new_context(
-            viewport={"width": 1440, "height": 1100},
-            locale="ko-KR",
-            user_agent=(
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/126.0 Safari/537.36"
-            ),
-        )
-        page = await context.new_page()
-        await page.goto(start_url, wait_until="domcontentloaded", timeout=60_000)
-
-        if headed:
-            print("\n브라우저가 열렸습니다.")
-            print("로그인이 필요하면 직접 로그인하고 이력서 작성/수정 화면까지 이동하세요.")
-            print(f"{wait_seconds}초 후 현재 화면의 폼 요소를 추출합니다.\n")
-            await page.wait_for_timeout(wait_seconds * 1000)
-        else:
-            await page.wait_for_timeout(5000)
-
-        snapshot = await page.evaluate(
+async def extract_frame(frame, include_values: bool = False) -> Dict[str, object]:
+    return await frame.evaluate(
             """
-            () => {
+            (includeValues) => {
               const labelTextFor = (el) => {
                 const id = el.getAttribute('id');
                 const labels = [];
                 if (id) {
-                  document.querySelectorAll(`label[for="${CSS.escape(id)}"]`).forEach(l => labels.push(l.innerText.trim()));
+                  el.getRootNode().querySelectorAll(`label[for="${CSS.escape(id)}"]`).forEach(l => labels.push(l.innerText.trim()));
                 }
                 if (el.labels) Array.from(el.labels).forEach(l => labels.push(l.innerText.trim()));
                 let p = el.parentElement;
@@ -316,15 +276,24 @@ async def playwright_extract(site_key: str, headed: bool, wait_seconds: int, bro
                 return Array.from(new Set(labels.filter(Boolean))).slice(0, 5);
               };
               const cssPath = (el) => {
-                if (el.id) return `#${CSS.escape(el.id)}`;
+                const root = el.getRootNode();
+                const unique = s => root.querySelectorAll(s).length === 1;
+                if (el.id && unique(`#${CSS.escape(el.id)}`)) return `#${CSS.escape(el.id)}`;
+                for (const attr of ['data-testid', 'name', 'aria-label', 'placeholder']) {
+                  const value = el.getAttribute(attr);
+                  if (value) {
+                    const s = `${el.localName}[${attr}="${CSS.escape(value)}"]`;
+                    if (unique(s)) return s;
+                  }
+                }
                 const parts = [];
                 let cur = el;
-                while (cur && cur.nodeType === Node.ELEMENT_NODE && parts.length < 6) {
+                while (cur && cur.nodeType === Node.ELEMENT_NODE) {
                   let part = cur.nodeName.toLowerCase();
                   if (cur.classList && cur.classList.length) {
                     part += '.' + Array.from(cur.classList).slice(0, 3).map(c => CSS.escape(c)).join('.');
                   }
-                  const parent = cur.parentElement;
+                  const parent = cur.parentNode;
                   if (parent) {
                     const same = Array.from(parent.children).filter(x => x.nodeName === cur.nodeName);
                     if (same.length > 1) part += `:nth-of-type(${same.indexOf(cur) + 1})`;
@@ -339,7 +308,14 @@ async def playwright_extract(site_key: str, headed: bool, wait_seconds: int, bro
                 const r = el.getBoundingClientRect();
                 return s && s.visibility !== 'hidden' && s.display !== 'none' && r.width > 0 && r.height > 0;
               };
-              const fields = Array.from(document.querySelectorAll('input, textarea, select, [contenteditable="true"]')).map((el, idx) => ({
+              const roots = [document];
+              const all = [];
+              for (let i = 0; i < roots.length; i++) {
+                const elements = Array.from(roots[i].querySelectorAll('*'));
+                all.push(...elements);
+                for (const el of elements) if (el.shadowRoot) roots.push(el.shadowRoot);
+              }
+              const fields = all.filter(el => el.matches('input, textarea, select, [contenteditable]:not([contenteditable="false"]), [role="combobox"], [role="textbox"]')).map((el, idx) => ({
                 index: idx,
                 tag: el.tagName.toLowerCase(),
                 type: el.getAttribute('type') || '',
@@ -353,12 +329,37 @@ async def playwright_extract(site_key: str, headed: bool, wait_seconds: int, bro
                 disabled: el.disabled || el.getAttribute('aria-disabled') === 'true',
                 read_only: el.readOnly || el.getAttribute('aria-readonly') === 'true',
                 max_length: el.getAttribute('maxlength') || '',
+                min: el.getAttribute('min') || '',
+                max: el.getAttribute('max') || '',
+                pattern: el.getAttribute('pattern') || '',
+                contenteditable: el.isContentEditable,
+                options: el.tagName === 'SELECT' ? Array.from(el.options).map(o => ({value: o.value, label: o.label, disabled: o.disabled})) : [],
                 labels: labelTextFor(el),
-                value_preview: (el.value || el.innerText || '').slice(0, 80),
+                section: (() => {
+                  let p = el.parentElement;
+                  while (p && p !== document.body) {
+                    const heading = p.querySelector('h2,legend');
+                    if (heading) return heading.innerText.trim();
+                    p = p.parentElement;
+                  }
+                  return '';
+                })(),
+                group_selector: el.closest('li,fieldset') ? cssPath(el.closest('li,fieldset')) : '',
+                value_preview: includeValues && !['password', 'hidden'].includes(el.type) ? (el.value || el.innerText || '').slice(0, 80) : '',
                 selector: cssPath(el),
+                shadow_hosts: (() => {
+                  const hosts = [];
+                  let root = el.getRootNode();
+                  while (root.host) {
+                    hosts.unshift(cssPath(root.host));
+                    root = root.host.getRootNode();
+                  }
+                  return hosts;
+                })(),
+                selector_count: el.getRootNode().querySelectorAll(cssPath(el)).length,
                 visible: visible(el)
               }));
-              const buttons = Array.from(document.querySelectorAll('button, input[type="button"], input[type="submit"], a')).map((el, idx) => ({
+              const buttons = all.filter(el => el.matches('button, input[type="button"], input[type="submit"], a, [role="button"]')).map((el, idx) => ({
                 index: idx,
                 tag: el.tagName.toLowerCase(),
                 type: el.getAttribute('type') || '',
@@ -372,18 +373,97 @@ async def playwright_extract(site_key: str, headed: bool, wait_seconds: int, bro
                 title: document.title,
                 extracted_at: new Date().toISOString(),
                 fields,
-                buttons
+                buttons,
+                headings: Array.from(document.querySelectorAll('h1,h2,h3,h4,legend,[role="heading"]')).filter(visible).map(el => (el.innerText || '').trim()).filter(Boolean)
               };
             }
-            """
+            """, include_values
         )
-        await browser.close()
-        return {
-            "site_key": site_key,
-            "site_name": target["name"],
-            "start_url": start_url,
-            "snapshot": snapshot,
-        }
+
+
+def site_matches_url(site_key: str, url: str) -> bool:
+    host = (urlparse(url).hostname or '').lower()
+    domain = (urlparse(str(SITE_TARGETS[site_key]['candidate_urls'][0])).hostname or '').removeprefix('www.')
+    return host == domain or host.endswith('.' + domain)
+
+
+async def capture_page(page, site_key: str, include_values: bool = False) -> Dict[str, object]:
+    snapshot = await extract_frame(page.main_frame, include_values)
+    snapshot['frames'] = []
+    # Frame paths preserve parent scope when names/URLs repeat in nested editors.
+    async def walk(parent, path):
+        for index, frame in enumerate(parent.child_frames):
+            frame_path = [*path, index]
+            try:
+                child = await extract_frame(frame, include_values)
+                for field in child['fields']:
+                    field['frame_path'] = frame_path
+                    field['frame_url'] = frame.url
+                snapshot['fields'].extend(child['fields'])
+                snapshot['frames'].append({'frame_path': frame_path, 'snapshot': child})
+            except Exception as exc:
+                snapshot['frames'].append({'frame_path': frame_path, 'error': type(exc).__name__})
+            await walk(frame, frame_path)
+    await walk(page.main_frame, [])
+    return {'site_key': site_key, 'site_name': SITE_TARGETS[site_key]['name'], 'snapshot': snapshot}
+
+
+async def launch_site_context(playwright, site_key: str, headed: bool = True,
+                              browser_path: Optional[str] = None):
+    options = {'headless': not headed, 'locale': 'ko-KR',
+               'viewport': {'width': 1440, 'height': 1100}}
+    executable_path = browser_path or find_local_browser()
+    if executable_path:
+        options['executable_path'] = executable_path
+    profile = Path(__file__).resolve().parent / 'result' / 'browser_profiles' / site_key
+    return await playwright.chromium.launch_persistent_context(str(profile), **options)
+
+
+async def playwright_extract(site_key: str, headed: bool, wait_seconds: int,
+                             browser_path: Optional[str], interactive: bool = False,
+                             include_values: bool = False, start_url: Optional[str] = None) -> Dict[str, object]:
+    try:
+        from playwright.async_api import async_playwright
+    except ImportError as exc:
+        raise SystemExit('Install browser support: uv sync --extra browser') from exc
+    target = SITE_TARGETS[site_key]
+    start_url = start_url or str(target['candidate_urls'][0])
+    if not site_matches_url(site_key, start_url):
+        raise ValueError('Start URL must belong to the selected site')
+    async with async_playwright() as p:
+        context = await launch_site_context(p, site_key, headed, browser_path)
+        try:
+            page = context.pages[0] if context.pages else await context.new_page()
+            await page.goto(start_url, wait_until='domcontentloaded', timeout=60_000)
+            if interactive:
+                print('직접 로그인 후 이력서 수정 화면으로 이동하세요.')
+                print('Enter: 열린 사이트 탭 수집 / q: 종료. 섹션·팝업을 열고 반복 수집할 수 있습니다.')
+                captures = []
+                while True:
+                    try:
+                        command = await asyncio.to_thread(input, 'capture> ')
+                    except EOFError:
+                        break
+                    if command.strip().lower() == 'q':
+                        break
+                    for candidate in list(context.pages):
+                        if candidate.is_closed() or not site_matches_url(site_key, candidate.url):
+                            continue
+                        payload = await capture_page(candidate, site_key, include_values)
+                        stamp = datetime.now().strftime('%Y%m%d_%H%M%S_%f')
+                        path = write_json(f'{site_key}_playwright_{stamp}.json', payload)
+                        captures.append(path)
+                        print(f"저장: {path} (fields={len(payload['snapshot']['fields'])})")
+                return {'captures': captures}
+            if headed:
+                print(f'직접 로그인 후 수정 화면으로 이동하세요. {wait_seconds}초 후 수집합니다.')
+            await page.wait_for_timeout((wait_seconds if headed else 5) * 1000)
+            pages = [tab for tab in context.pages if not tab.is_closed() and site_matches_url(site_key, tab.url)]
+            if not pages:
+                raise RuntimeError('No target-site tab remains open')
+            return await capture_page(pages[-1], site_key, include_values)
+        finally:
+            await context.close()
 
 
 def write_json(name: str, payload: object) -> str:
@@ -403,17 +483,24 @@ def static_probe(sites: List[str]) -> List[Dict[str, object]]:
 
 
 def default_sites() -> List[str]:
-    return ["saramin", "wanted", "jobplanet", "catch", "jobkorea", "linkedin"]
+    return ["catch", "jobkorea", "saramin", "wanted", "incruit"]
 
 
 async def main() -> None:
     parser = argparse.ArgumentParser(description="채용 사이트 이력서 폼 요소 수집기")
-    parser.add_argument("--sites", nargs="*", default=default_sites(), help="saramin wanted jobplanet catch jobkorea linkedin")
+    parser.add_argument("--sites", nargs="+", default=default_sites(), help="catch jobkorea saramin wanted incruit")
     parser.add_argument("--mode", choices=["static", "playwright"], default="static")
     parser.add_argument("--headed", action="store_true", help="Playwright 브라우저를 보이게 열고 수동 로그인 후 추출")
     parser.add_argument("--wait-seconds", type=int, default=90, help="headed 모드에서 수동 로그인/이동 대기 시간")
     parser.add_argument("--browser-path", default=None, help="Chrome/Edge 실행 파일 경로. 생략하면 로컬 Chrome/Edge 자동 탐색")
+    parser.add_argument('--interactive', action='store_true', help='Enter마다 화면 수집, q로 종료 (headed 필수)')
+    parser.add_argument('--include-values', action='store_true', help='로컬 스냅샷에 입력값 미리보기 포함 (기본 제외)')
+    parser.add_argument('--url', help='실제 화면에서 확인한 시작 URL (사이트 1개만 선택)')
     args = parser.parse_args()
+    if args.interactive and (args.mode != 'playwright' or not args.headed):
+        parser.error('--interactive requires --mode playwright --headed')
+    if args.url and (len(args.sites) != 1 or args.mode != 'playwright'):
+        parser.error('--url requires one site and --mode playwright')
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     sites = [normalize_site(site) for site in args.sites]
@@ -437,7 +524,12 @@ async def main() -> None:
             headed=args.headed,
             wait_seconds=args.wait_seconds,
             browser_path=args.browser_path,
+            interactive=args.interactive,
+            include_values=args.include_values,
+            start_url=args.url,
         )
+        if args.interactive:
+            continue
         safe_url = re.sub(r"[^a-z0-9]+", "_", site.lower()).strip("_")
         path = write_json(f"{safe_url}_playwright_{timestamp}.json", payload)
         print(f"Playwright 추출 결과 저장: {path}")

@@ -62,15 +62,21 @@ flowchart TD
 
 ## 향후 아키텍처: 사이트별 이력서 저장 에이전트
 
+2026-10-07 실제 작성에는 `resume_library.py extract --source <DOCX>`(반복 지정)로 명시 선택 자료만 추출하고, 문단 근거를 연결한 로컬 `reviewed_draft.json`을 `build --corpus <JSON> --draft <JSON>`으로 컴파일했다. 공통 master/사이트 패키지는 ignored `result/`에만 둔다. 5개 사이트에 검수용 이력서를 입력했으며, 이번에는 원복하지 않았다. 원티드만 자동저장 후 새로고침 유지까지 확인했고, 나머지 최종 저장은 사용자에게 넘긴다. 작성 상세 및 미작성 항목은 `docs/resume_authoring.md`가 최신 기준이다.
+
+2026-10-06 우선 대상은 캐치·잡코리아·사람인·원티드·인크루트다. ALIO API 연동은 취소한다. 로그인된 실제 화면을 조사하고, 확인되지 않은 이력서 편집 URL이나 selector를 확정값으로 사용하지 않는다.
+
+수집 명령: `uv sync --extra browser` 후 `python site_form_mapper.py --mode playwright --sites catch --headed --interactive`. 전용 프로필은 `result/browser_profiles/`에서 재사용하며, Enter마다 해당 사이트 탭과 iframe을 수집한다. 섹션 추가/편집 팝업을 열고 반복 수집한다. 값 미리보기는 기본 제외, 필요하면 `--include-values`를 사용한다. 연결기의 후보를 개별 검수하여 `approved: true`를 표시한다. `site_form_filler.py` 기본 실행은 검증만, `--apply`와 터미널 `APPLY` 입력 시 기존 텍스트/native select/contenteditable에 입력한다. 저장 버튼은 사용자가 처리하며, 사이트 자동저장이 있을 수 있으므로 실제 입력 전 값을 검수한다. 반복 항목 생성과 custom 선택 UI는 미구현이다.
+
 `site_resume_agent.py`는 이력서 원본을 채용 사이트별 입력 양식으로 변환하는 1단계 에이전트다.
 
 현재 범위:
-- 원티드, 사람인, 잡코리아, 점핏, 캐치, LinkedIn 사이트 프로필을 코드에 둔다.
+- 캐치, 잡코리아, 사람인, 원티드, 인크루트를 우선 지원한다. 기존 점핏/LinkedIn 프로필은 보조 대상이다.
 - `knowledge/`와 `more_info/`를 읽어 사이트별 JSON/Markdown 입력 패키지를 만든다.
 - 산출물은 `result/site_resumes/`에 저장한다.
 - `site_form_mapper.py`로 공개 접근/로그인 화면/이력서 화면의 DOM 요소를 추출한다.
 - `site_form_connector.py`로 입력 패키지 필드와 DOM selector 후보를 연결한다.
-- 실제 자동 입력과 저장 버튼 클릭은 아직 수행하지 않는다.
+- 검수된 기존 필드의 입력 실행기가 있다. 실제 DOCX로 캐치/잡코리아/사람인 경력 및 원티드 소개 입력 smoke test 후 기존 값 복원 완료. 원티드 blur 자동저장 확인 및 복원 새로고침 검증. 전체 저장 흐름과 Python 전용 로그인 CLI의 실사이트 실행은 아직 미검증. 저장 버튼은 사용자가 처리한다. 자세한 범위는 `docs/real_source_test.md` 참조.
 
 다음 확장 순서:
 1. 사용자가 실제로 많이 쓰는 사이트 1개를 고른다.

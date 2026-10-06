@@ -138,6 +138,17 @@ SITE_PROFILES: Dict[str, SiteProfile] = {
             "공고별 요구 역량을 프로젝트 bullet에 연결한다.",
         ],
     ),
+    "incruit": SiteProfile(
+        name="Incruit",
+        aliases=["incruit", "인크루트"],
+        purpose="국내 채용용 상세 이력서 입력 패키지",
+        sections=["기본정보", "학력", "경력", "보유기술", "자격/어학", "자기소개서"],
+        constraints=[
+            "확인된 경력과 학력만 사용한다.",
+            "실제 편집 화면 조사 전 필수 항목과 글자수 제한을 단정하지 않는다.",
+        ],
+        save_notes=["로그인 후 기존 이력서 편집 화면을 확인한다.", "저장과 제출은 사용자가 검수 후 처리한다."],
+    ),
     "linkedin": SiteProfile(
         name="LinkedIn",
         aliases=["linkedin", "링크드인"],
@@ -310,7 +321,7 @@ async def run_site_resume_agent():
     print("\n" + "=" * 60)
     print(" 🧾 채용 사이트별 이력서 입력 패키지 에이전트")
     print("=" * 60)
-    print("지원 사이트 예: wanted, saramin, jobkorea, jumpit, catch, linkedin")
+    print("우선 대상: catch, jobkorea, saramin, wanted, incruit")
 
     site_name = input("1. 저장할 채용 사이트: ").strip()
     company_name = input("2. 지원 기업명: ").strip()

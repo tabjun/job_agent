@@ -14,3 +14,6 @@ dependencies = [
     "python-dotenv",
     "tavily-python>=0.7.24",
 ]
+
+[project.optional-dependencies]
+browser = ["playwright>=1.51,<2"]
