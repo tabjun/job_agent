@@ -1,20 +1,17 @@
 import asyncio
-import os
-import glob
-import json
-import aiohttp
-from typing import List, Dict, Any
 from langchain_core.tools import tool
 from langchain_community.tools.tavily_search import TavilySearchResults
-from agent import LangGraphAgentEngine
-from dotenv import load_dotenv
+from job_agent.core.engine import LangGraphAgentEngine
+from job_agent.core.paths import ProjectPaths, load_environment
+from job_agent.core.storage import ArtifactStore
 
 # .env 로드
-load_dotenv()
+load_environment()
 
 # =====================================================================
 # [1. 도구 정의 (재무, 평판, 검색, 저장)]
 # =====================================================================
+
 
 @tool
 async def get_financial_health(company_name: str):
@@ -25,10 +22,16 @@ async def get_financial_health(company_name: str):
     query = f"{company_name} 최근 3년 매출액 영업이익 당기순이익 DART 공시 리포트"
     try:
         results = await search.ainvoke(query)
-        return {"company": company_name, "financial_summary": [r.get('content') for r in results] if results else "정보 없음"}
-    except Exception as e: 
+        return {
+            "company": company_name,
+            "financial_summary": [r.get("content") for r in results]
+            if results
+            else "정보 없음",
+        }
+    except Exception as e:
         print(f"    >> 재무 조회 에러: {e}")
         return f"재무 조회 실패: {e}"
+
 
 @tool
 async def search_jobs(role: str, experience: str, location: str, keywords: str):
@@ -37,7 +40,9 @@ async def search_jobs(role: str, experience: str, location: str, keywords: str):
     - 라벨링, 단순 입력 등 단순 반복 업무는 자동으로 제외 쿼리가 포함됩니다.
     - 검색 결과에서 공고의 신선도(마감 여부)와 경력 요건을 1차적으로 확인합니다.
     """
-    fixed_role = "데이터 분석가 OR 데이터 사이언티스트 OR Data Analyst OR Data Scientist"
+    fixed_role = (
+        "데이터 분석가 OR 데이터 사이언티스트 OR Data Analyst OR Data Scientist"
+    )
     exclude_keywords = "-라벨링 -수집알바 -단순입력 -labeling -마감 -종료 -지원마감"
     # 현재 날짜 기준 (2026-05-11 기준)
     current_date_info = "2026년 5월 채용공고"
@@ -47,9 +52,9 @@ async def search_jobs(role: str, experience: str, location: str, keywords: str):
 
     # 더 정확한 필터링을 위한 쿼리 고도화
     queries = [
-        f"(\"{fixed_role}\") {experience} {location} {keywords} {exclude_keywords} {current_date_info} site:wanted.co.kr OR site:rememberapp.co.kr",
-        f"(\"{fixed_role}\") {experience} {location} {keywords} {exclude_keywords} {current_date_info} site:saramin.co.kr OR site:jobkorea.co.kr",
-        f"(\"{fixed_role}\") {experience} {location} {keywords} {exclude_keywords} {current_date_info} site:jumpit.co.kr OR site:catch.co.kr"
+        f'("{fixed_role}") {experience} {location} {keywords} {exclude_keywords} {current_date_info} site:wanted.co.kr OR site:rememberapp.co.kr',
+        f'("{fixed_role}") {experience} {location} {keywords} {exclude_keywords} {current_date_info} site:saramin.co.kr OR site:jobkorea.co.kr',
+        f'("{fixed_role}") {experience} {location} {keywords} {exclude_keywords} {current_date_info} site:jumpit.co.kr OR site:catch.co.kr',
     ]
 
     all_results = []
@@ -64,14 +69,16 @@ async def search_jobs(role: str, experience: str, location: str, keywords: str):
     # URL 중복 제거 및 검색 결과 품질 향상
     unique_results = {}
     for r in all_results:
-        url = r.get('url')
+        url = r.get("url")
         if url and url not in unique_results:
             # 제목이나 내용에 '마감', '종료'가 있으면 1차 제외
-            content = r.get('content', '').lower()
-            if any(term in content for term in ['마감', '종료', '채용 완료', 'expired']):
+            content = r.get("content", "").lower()
+            if any(
+                term in content for term in ["마감", "종료", "채용 완료", "expired"]
+            ):
                 continue
             unique_results[url] = r
-            
+
     return list(unique_results.values())
 
 
@@ -79,29 +86,33 @@ async def search_jobs(role: str, experience: str, location: str, keywords: str):
 async def get_company_reputation(company_name: str):
     """잡플래닛 평점 및 리뷰 요약을 가져옵니다."""
     print(f"  [Reputation] '{company_name}' 평판 분석 중...")
-    
+
     search = TavilySearchResults(max_results=5)
-    query = f"site:jobplanet.co.kr \"{company_name}\" 평점 별점 장점 단점 후기"
-    
+    query = f'site:jobplanet.co.kr "{company_name}" 평점 별점 장점 단점 후기'
+
     try:
         results = await search.ainvoke(query)
-        return {"company": company_name, "reputation": [r.get('content') for r in results] if results else "정보 없음"}
+        return {
+            "company": company_name,
+            "reputation": [r.get("content") for r in results]
+            if results
+            else "정보 없음",
+        }
     except Exception as e:
         print(f"    >> 평판 조회 에러: {e}")
         return f"평판 조회 에러: {e}"
 
+
 @tool
-async def save_job_search_report(report_content: str, filename: str = "job_search_results.md"):
+async def save_job_search_report(
+    report_content: str, filename: str = "job_search_results.md"
+):
     """검색 및 분석된 모든 공고 리스트를 마크다운 형식의 리포트로 저장합니다."""
-    os.makedirs("result", exist_ok=True)
-    file_path = f"result/{filename}"
-    # 리포트 헤더 보강
-    header = f"# 🔍 데이터 직무 채용 분석 리포트\n- 생성 일시: 2026-05-11\n\n"
-    full_content = header + report_content
-    with open(file_path, "w", encoding="utf-8") as f:
-        f.write(full_content)
-    print(f"  >> [System] 리포트가 {file_path}에 저장되었습니다.")
+    file_path = ArtifactStore(ProjectPaths().results).write_text(
+        filename, report_content
+    )
     return f"채용 공고 리포트 저장 완료: {file_path}"
+
 
 # =====================================================================
 # [2. 전문가 페르소나 설정]
@@ -138,42 +149,50 @@ HUNTER_PROMPT = """
 - 추가 키워드: {keywords}
 """
 
+
 async def run_job_hunter():
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print(" 🔍 전문 데이터 직무 헌터 (DA/DS 전용)")
-    print("="*60)
-    
+    print("=" * 60)
+
     experience = input("1. 경력 (예: 신입, 3년차 이하): ")
     location = input("2. 희망 지역 (예: 서울/경기): ")
     keywords = input("3. 핵심 기술 키워드 (예: Python, Tableau, PyTorch): ")
-    
-    print("\n" + "-"*60)
-    model_choice = input("어떤 AI 모델을 사용할까요? (1: Gemini(무료), 2: GPT-5-mini(유료)): ")
+
+    print("\n" + "-" * 60)
+    model_choice = input(
+        "어떤 AI 모델을 사용할까요? (1: Gemini, 2: OpenAI / 기본 GPT-6 Luna): "
+    )
     use_model = "gpt" if model_choice == "2" else "gemini"
-    print("-"*60)
+    print("-" * 60)
 
     final_prompt = HUNTER_PROMPT.format(
-        experience=experience, 
-        location=location, 
-        keywords=keywords
+        experience=experience, location=location, keywords=keywords
     )
 
     agent = LangGraphAgentEngine(
         use_model=use_model,
-        tools=[search_jobs, get_financial_health, get_company_reputation, save_job_search_report],
-        system_prompt=final_prompt
+        tools=[
+            search_jobs,
+            get_financial_health,
+            get_company_reputation,
+            save_job_search_report,
+        ],
+        system_prompt=final_prompt,
     )
-    
+
     user_request = f"'{location}' 지역의 '{experience}' 수준 '{keywords}' 관련 DA/DS 공고를 정밀 조사해서 리포트를 '/result' 폴더에 저장해줘. 조건에 맞지 않는 공고는 철저히 제외해."
-    
-    print(f"\n[전문 데이터 공고 분석 및 리포팅 시작...]\n" + "-"*60)
+
+    print(f"\n[전문 데이터 공고 분석 및 리포팅 시작...]\n" + "-" * 60)
 
     async for event in agent.run(user_request):
         for node_name, content in event.items():
             for msg in content.get("messages", []):
-                if msg.content:
+                if msg.text:
                     # 사용자에게 진행 상황을 알기 쉽게 출력
-                    print(f"\n[{node_name}] {msg.content[:500]}{'...' if len(msg.content) > 500 else ''}")
+                    print(
+                        f"\n[{node_name}] {msg.text[:500]}{'...' if len(msg.text) > 500 else ''}"
+                    )
 
 
 if __name__ == "__main__":

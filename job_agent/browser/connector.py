@@ -3,7 +3,8 @@ import json
 import os
 import re
 from datetime import datetime
-from typing import Any, Dict, Iterable, List, Tuple
+from typing import Any, Dict, List, Tuple
+from job_agent.core.paths import ProjectPaths
 
 
 FIELD_KEYWORDS: Dict[str, List[str]] = {
@@ -11,7 +12,15 @@ FIELD_KEYWORDS: Dict[str, List[str]] = {
     "email": ["이메일", "email", "mail"],
     "phone": ["전화", "휴대폰", "연락처", "mobile", "phone", "tel"],
     "headline": ["헤드라인", "직무", "희망직무", "headline", "title", "position"],
-    "summary": ["소개", "간단소개", "자기소개", "about", "summary", "intro", "description"],
+    "summary": [
+        "소개",
+        "간단소개",
+        "자기소개",
+        "about",
+        "summary",
+        "intro",
+        "description",
+    ],
     "experience": ["경력", "회사", "재직", "experience", "career", "company"],
     "project": ["프로젝트", "project", "portfolio"],
     "skill": ["스킬", "기술", "skill", "tech", "stack"],
@@ -66,7 +75,7 @@ def flatten_package_values(package_payload: Dict[str, Any]) -> List[Dict[str, An
             for idx, child in enumerate(value):
                 walk((*prefix, str(idx)), child)
         else:
-            text = '' if value is None else str(value).strip()
+            text = "" if value is None else str(value).strip()
             if text:
                 rows.append(
                     {
@@ -90,11 +99,17 @@ def semantic_categories(text: str) -> List[str]:
     return cats
 
 
-def score_match(package_field: Dict[str, Any], browser_field: Dict[str, Any]) -> Tuple[int, List[str]]:
+def score_match(
+    package_field: Dict[str, Any], browser_field: Dict[str, Any]
+) -> Tuple[int, List[str]]:
     score = 0
     reasons: List[str] = []
     browser_hay = field_haystack(browser_field)
-    package_hay = normalize(" ".join([package_field["path"], package_field["label"], package_field["section"]]))
+    package_hay = normalize(
+        " ".join(
+            [package_field["path"], package_field["label"], package_field["section"]]
+        )
+    )
 
     if not browser_field.get("visible", True):
         score -= 20
@@ -103,7 +118,9 @@ def score_match(package_field: Dict[str, Any], browser_field: Dict[str, Any]) ->
         score -= 30
         reasons.append("disabled_or_readonly")
 
-    package_tokens = [token for token in re.split(r"[._\s/]+", package_field["path"]) if token]
+    package_tokens = [
+        token for token in re.split(r"[._\s/]+", package_field["path"]) if token
+    ]
     for token in package_tokens:
         n = normalize(token)
         if n and n in browser_hay:
@@ -140,16 +157,31 @@ def candidate_fields(form_map_payload: Dict[str, Any]) -> List[Dict[str, Any]]:
     return [
         field
         for field in fields
-        if (field.get("tag") in {"input", "textarea", "select"}
-            or field.get("contenteditable") or field.get("role") in {"textbox", "combobox"})
-        and field.get('type') not in {'password', 'hidden', 'submit', 'button', 'reset', 'file', 'checkbox', 'radio'}
-        and field.get('visible', True)
-        and not field.get('disabled')
-        and not field.get('read_only')
+        if (
+            field.get("tag") in {"input", "textarea", "select"}
+            or field.get("contenteditable")
+            or field.get("role") in {"textbox", "combobox"}
+        )
+        and field.get("type")
+        not in {
+            "password",
+            "hidden",
+            "submit",
+            "button",
+            "reset",
+            "file",
+            "checkbox",
+            "radio",
+        }
+        and field.get("visible", True)
+        and not field.get("disabled")
+        and not field.get("read_only")
     ]
 
 
-def build_mapping(package_payload: Dict[str, Any], form_map_payload: Dict[str, Any]) -> Dict[str, Any]:
+def build_mapping(
+    package_payload: Dict[str, Any], form_map_payload: Dict[str, Any]
+) -> Dict[str, Any]:
     package_fields = flatten_package_values(package_payload)
     browser_fields = candidate_fields(form_map_payload)
     mappings = []
@@ -158,7 +190,9 @@ def build_mapping(package_payload: Dict[str, Any], form_map_payload: Dict[str, A
         scored = []
         for browser_field in browser_fields:
             score, reasons = score_match(package_field, browser_field)
-            if score > 0 and any(reason.startswith(('path_token:', 'category:')) for reason in reasons):
+            if score > 0 and any(
+                reason.startswith(("path_token:", "category:")) for reason in reasons
+            ):
                 scored.append((score, reasons, browser_field))
         scored.sort(key=lambda item: item[0], reverse=True)
         best = scored[0] if scored else None
@@ -179,12 +213,12 @@ def build_mapping(package_payload: Dict[str, Any], form_map_payload: Dict[str, A
                     "labels": best[2].get("labels"),
                     "max_length": best[2].get("max_length"),
                     "visible": best[2].get("visible"),
-                    "frame_path": best[2].get('frame_path', []),
-                    "frame_url": best[2].get('frame_url'),
-                    "shadow_hosts": best[2].get('shadow_hosts', []),
-                    "selector_count": best[2].get('selector_count'),
-                    "section": best[2].get('section'),
-                    "group_selector": best[2].get('group_selector'),
+                    "frame_path": best[2].get("frame_path", []),
+                    "frame_url": best[2].get("frame_url"),
+                    "shadow_hosts": best[2].get("shadow_hosts", []),
+                    "selector_count": best[2].get("selector_count"),
+                    "section": best[2].get("section"),
+                    "group_selector": best[2].get("group_selector"),
                 }
                 if best
                 else None,
@@ -192,29 +226,49 @@ def build_mapping(package_payload: Dict[str, Any], form_map_payload: Dict[str, A
                     {
                         "score": score,
                         "selector": field.get("selector"),
-                        "frame_path": field.get('frame_path', []),
-                        "shadow_hosts": field.get('shadow_hosts', []),
+                        "frame_path": field.get("frame_path", []),
+                        "shadow_hosts": field.get("shadow_hosts", []),
                         "placeholder": field.get("placeholder"),
                         "labels": field.get("labels"),
                     }
                     for score, _reasons, field in scored[1:4]
                 ],
-                "review_reasons": (['ambiguous_candidates'] if len(scored) > 1 and scored[0][0] == scored[1][0] else [])
-                    + (['non_unique_selector'] if best and best[2].get('selector_count', 1) != 1 else [])
-                    + ([reason for reason in best[1] if reason.startswith('over_maxlength:')] if best else []),
+                "review_reasons": (
+                    ["ambiguous_candidates"]
+                    if len(scored) > 1 and scored[0][0] == scored[1][0]
+                    else []
+                )
+                + (
+                    ["non_unique_selector"]
+                    if best and best[2].get("selector_count", 1) != 1
+                    else []
+                )
+                + (
+                    [
+                        reason
+                        for reason in best[1]
+                        if reason.startswith("over_maxlength:")
+                    ]
+                    if best
+                    else []
+                ),
             }
         )
 
     destinations = {}
     for item in mappings:
-        match = item['best_match']
+        match = item["best_match"]
         if match:
-            key = (tuple(match['frame_path']), tuple(match['shadow_hosts']), match['selector'])
+            key = (
+                tuple(match["frame_path"]),
+                tuple(match["shadow_hosts"]),
+                match["selector"],
+            )
             destinations.setdefault(key, []).append(item)
     for items in destinations.values():
         if len(items) > 1:
             for item in items:
-                item['review_reasons'].append('shared_destination')
+                item["review_reasons"].append("shared_destination")
 
     return {
         "generated_at": datetime.now().isoformat(timespec="seconds"),
@@ -225,7 +279,7 @@ def build_mapping(package_payload: Dict[str, Any], form_map_payload: Dict[str, A
         "mapping_status": "review_required",
         "mappings": mappings,
         "unmatched_count": sum(1 for item in mappings if not item["best_match"]),
-        "review_count": sum(1 for item in mappings if item['review_reasons']),
+        "review_count": sum(1 for item in mappings if item["review_reasons"]),
         "notes": [
             "이 매핑은 selector 후보 계획이다. 실제 저장 전 브라우저 화면에서 사용자 검수가 필요하다.",
             "로그인 페이지에서 추출한 form map은 이력서 필드와 매칭되지 않을 수 있다.",
@@ -235,35 +289,43 @@ def build_mapping(package_payload: Dict[str, Any], form_map_payload: Dict[str, A
 
 def write_output(payload: Dict[str, Any], output_path: str | None) -> str:
     if not output_path:
-        out_dir = os.path.join("result", "site_field_mappings")
+        out_dir = str(ProjectPaths().results / "site_field_mappings")
         os.makedirs(out_dir, exist_ok=True)
         stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         site = normalize(payload.get("form_site", "site"))
         company = normalize(payload.get("package_company", "company"))[:40] or "company"
         output_path = os.path.join(out_dir, f"{company}_{site}_{stamp}.json")
+    output_path = str(ProjectPaths().resolve(output_path))
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
     with open(output_path, "w", encoding="utf-8") as f:
         json.dump(payload, f, ensure_ascii=False, indent=2)
     return output_path
 
 
 def load_json(path: str) -> Dict[str, Any]:
-    with open(path, "r", encoding="utf-8") as f:
+    with open(ProjectPaths().resolve(path), "r", encoding="utf-8") as f:
         return json.load(f)
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description="사이트별 이력서 패키지와 Playwright 폼 추출 결과를 selector 매핑으로 연결")
+def main(argv=None) -> None:
+    parser = argparse.ArgumentParser(
+        description="사이트별 이력서 패키지와 Playwright 폼 추출 결과를 selector 매핑으로 연결"
+    )
     parser.add_argument("--package", required=True, help="result/site_resumes/*.json")
-    parser.add_argument("--form-map", required=True, help="result/site_form_maps/*_playwright_*.json")
+    parser.add_argument(
+        "--form-map", required=True, help="result/site_form_maps/*_playwright_*.json"
+    )
     parser.add_argument("--output", default=None, help="저장할 mapping json 경로")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     package_payload = load_json(args.package)
     form_map_payload = load_json(args.form_map)
     mapping = build_mapping(package_payload, form_map_payload)
     path = write_output(mapping, args.output)
     print(f"필드 매핑 계획 저장: {path}")
-    print(f"총 매핑 후보: {len(mapping['mappings'])}, 미매칭: {mapping['unmatched_count']}")
+    print(
+        f"총 매핑 후보: {len(mapping['mappings'])}, 미매칭: {mapping['unmatched_count']}"
+    )
 
 
 if __name__ == "__main__":

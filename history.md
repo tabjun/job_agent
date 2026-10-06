@@ -2,6 +2,19 @@
 
 ## 2026-10-07
 
+- 회사 자체 채용사이트 확장: `SiteRegistry`로 사용자 등록 URL/명시 origin을 캡슐화하고 기존 고정 사이트는 유지. `target-register`, `application-prepare` CLI와 `--target` DOM 수집/입력 흐름 추가.
+- `ApplicationAdapter`가 양식 schema, 공통 master 연결 후보/검수 bindings, 근거 보존 package, 미작성·미지원 필드 목록을 생성. 폼 digest 변경 및 근거 없는 필드 차단, 글자수 초과 경고(자동 절단 없음), native select label→value 변환. 모든 입력은 개별 승인 필요, 저장/제출은 수동.
+- 가상의 미등록 회사 폼에서 실제 로컬 Chromium 수집→변환→입력→readback/제출 미실행 검증 및 origin 경계/양식 변경/근거/제한 테스트 추가. 실제 회사 사이트나 유료 LLM에는 요청하지 않음.
+- 검증: 실제 DOCX/master 통합 환경변수로 전체 29 tests 통과(누락/skip 없음). Ruff F401/F821 및 `git diff --check` 통과. `job_agent` 브랜치 유지, 다른 프로젝트 병합 없음.
+
+- 사용자 지정 모델 정책 갱신: 공식 OpenAI 문서에서 `gpt-6-luna`와 도구 호출 호환 조건을 확인해 OpenAI 기본값을 Luna로 변경했다. `OPENAI_MODEL`로 변경 가능. 추론을 유지하는 Responses API/medium 경로로 전환하고 sampling 파라미터는 제거했다. Responses 저장 비활성화 및 암호화 추론 상태 재전달, 콘텐츠 블록의 `.text` 표시를 적용했다.
+- README와 3개 에이전트 모델 선택 안내를 정합화했다. 이전 `gpt-5-mini` 실호출 기록과 Luna의 모의 API 검증을 구분했다. 모델 기본값/재정의/SDK 직렬화/도구 실행/암호화 상태 재전달/텍스트 출력 회귀 테스트를 추가했다. 전체 22 tests와 Ruff F401/F821 검사 통과. OpenAI에 개인자료 전송이나 유료 실호출은 수행하지 않았다.
+
+- 사용자 요청에 따라 루트 Python 파일을 `job_agent/` 패키지의 core/agents/documents/browser/sites/examples로 분리. 문서 근거, 브라우저 세션 및 검수 입력 계획을 상태를 가진 클래스로 캡슐화하고, 공통 경로/결과 저장 경계를 추가했다. 루트 지침 Markdown과 개인자료·결과·로그인 프로필 위치는 유지했다.
+- `python -m job_agent` 및 설치형 `job-agent` CLI로 8개 워크플로우 진입점을 통합. 지연 import로 도움말/문서 처리에서 LLM을 실행하지 않는다. 상대 경로는 프로젝트 루트 기준이며, 기존 루트 파일 직접 실행 명령은 교체했다.
+- 구조 회귀 검증: 실제 DOCX와 검수 master 포함 19 tests 통과, 기존 master JSON/Markdown 및 5개 사이트 패키지 재컴파일 결과 동일. Ruff F401/F821 검사 통과. 실제 계정 초안은 변경하지 않았다.
+- 안티그래비티 프로젝트 설정 참조 제거. 빈 `.antigravitycli/` 물리 폴더 삭제는 실행 정책에서 차단되어 남아 있으며, 전역 앱은 변경하지 않았다.
+
 - 사용자 지정 외부 취업 폴더의 최신 공통 이력서/경력기술서 등 6개 DOCX를 근거로 공통 이력서 8개 블록 및 사이트별 공통 패키지를 작성. 개인 corpus/검수 초안/산출물은 ignored `result/`에만 보관.
 - `resume_library.py` 추가: 명시 선택 DOCX 추출, SHA256 중복 제거, 원본 변경 및 추출문 변조 차단, 문단 참조 검증, 검수된 초안 컴파일. 의미상 사실성 판단은 수동 검수 범위다.
 - 인크루트 사용자 2단계 인증 완료 확인 후 기존 이력서 편집 조사·작성. 5개 사이트 실제 경력/소개 작성, 잡코리아 자기소개 및 캐치 상세 기술서 추가. 원티드 회사/날짜/졸업/전공 선택과 사용자 확인한 정규직 반영, 자동저장 새로고침 검증. `docs/resume_authoring.md`에 작성 및 미작성 범위 기록.

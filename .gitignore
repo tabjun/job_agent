@@ -28,7 +28,6 @@ resume.pdf
 # 로컬 에이전트 스킬/플러그인/설정 무시 (AGENTS.md §6 정책)
 .agents/
 .codex/
-.antigravitycli/
 .claude/settings.local.json
 
 # 생성 결과물 및 개인정보 무시 (커밋 금지)

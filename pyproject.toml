@@ -17,3 +17,13 @@ dependencies = [
 
 [project.optional-dependencies]
 browser = ["playwright>=1.51,<2"]
+
+[project.scripts]
+job-agent = "job_agent.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["job_agent*"]

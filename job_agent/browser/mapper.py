@@ -1,79 +1,21 @@
 import argparse
 import asyncio
-import json
-import os
 import re
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from html.parser import HTMLParser
-from pathlib import Path
 from typing import Dict, List, Optional
-from urllib.parse import urlparse
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
-
-
-SITE_TARGETS: Dict[str, Dict[str, object]] = {
-    "saramin": {
-        "name": "Saramin",
-        "aliases": ["saramin", "사람인"],
-        "candidate_urls": [
-            "https://www.saramin.co.kr/zf_user/resume/resume-manage",
-        ],
-    },
-    "wanted": {
-        "name": "Wanted",
-        "aliases": ["wanted", "원티드"],
-        "candidate_urls": [
-            "https://www.wanted.co.kr/cv/list",
-        ],
-    },
-    "jobplanet": {
-        "name": "JobPlanet",
-        "aliases": ["jobplanet", "잡플래닛"],
-        "candidate_urls": [
-            "https://www.jobplanet.co.kr/user-session/sign-in",
-            "https://www.jobplanet.co.kr/profile/resume",
-            "https://www.jobplanet.co.kr/users/resume",
-        ],
-    },
-    "catch": {
-        "name": "Catch",
-        "aliases": ["catch", "캐치"],
-        "candidate_urls": [
-            "https://www.catch.co.kr/Member/ResumeList",
-        ],
-    },
-    "jobkorea": {
-        "name": "JobKorea",
-        "aliases": ["jobkorea", "잡코리아"],
-        "candidate_urls": [
-            "https://www.jobkorea.co.kr/User/ResumeMng",
-        ],
-    },
-    "incruit": {
-        "name": "Incruit",
-        "aliases": ["incruit", "인크루트"],
-        "candidate_urls": ["https://www.incruit.com/"],
-    },
-    "linkedin": {
-        "name": "LinkedIn",
-        "aliases": ["linkedin", "링크드인"],
-        "candidate_urls": [
-            "https://www.linkedin.com/in/",
-            "https://www.linkedin.com/feed/",
-            "https://www.linkedin.com/profile/edit/forms/position/new/",
-        ],
-    },
-}
-
-
-CHROME_CANDIDATES = [
-    r"C:\Program Files\Google\Chrome\Application\chrome.exe",
-    r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
-    r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
-    r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
-]
+from job_agent.core.paths import ProjectPaths
+from job_agent.core.storage import ArtifactStore
+from job_agent.browser.session import BrowserSession
+from job_agent.sites.registry import (
+    SITE_TARGETS,
+    default_sites,
+    normalize_site,
+    SiteRegistry,
+)
 
 
 @dataclass
@@ -139,22 +81,9 @@ class StaticFormParser(HTMLParser):
         return " ".join(part for part in self.title_parts if part).strip()
 
 
-def normalize_site(site: str) -> str:
-    needle = site.strip().lower()
-    for key, target in SITE_TARGETS.items():
-        aliases = [str(alias).lower() for alias in target["aliases"]]
-        if needle == key or needle in aliases:
-            return key
-    raise ValueError(f"Unknown site: {site}. Known: {', '.join(SITE_TARGETS)}")
-
-
-def ensure_output_dir() -> str:
-    out_dir = os.path.join("result", "site_form_maps")
-    os.makedirs(out_dir, exist_ok=True)
-    return out_dir
-
-
-def fetch_url(url: str, timeout: int = 20) -> tuple[Optional[int], Optional[str], Optional[str], str]:
+def fetch_url(
+    url: str, timeout: int = 20
+) -> tuple[Optional[int], Optional[str], Optional[str], str]:
     req = Request(
         url,
         headers={
@@ -169,7 +98,12 @@ def fetch_url(url: str, timeout: int = 20) -> tuple[Optional[int], Optional[str]
     )
     with urlopen(req, timeout=timeout) as response:
         body = response.read(2_000_000).decode("utf-8", "ignore")
-        return response.status, response.geturl(), response.headers.get("content-type"), body
+        return (
+            response.status,
+            response.geturl(),
+            response.headers.get("content-type"),
+            body,
+        )
 
 
 def static_probe_site(site_key: str) -> List[StaticFetchResult]:
@@ -211,7 +145,9 @@ def static_probe_site(site_key: str) -> List[StaticFetchResult]:
                     url=str(url),
                     status=exc.code,
                     final_url=exc.geturl(),
-                    content_type=exc.headers.get("content-type") if exc.headers else None,
+                    content_type=exc.headers.get("content-type")
+                    if exc.headers
+                    else None,
                     title=None,
                     form_count=0,
                     input_count=0,
@@ -244,16 +180,9 @@ def static_probe_site(site_key: str) -> List[StaticFetchResult]:
     return rows
 
 
-def find_local_browser() -> Optional[str]:
-    for path in CHROME_CANDIDATES:
-        if os.path.exists(path):
-            return path
-    return None
-
-
 async def extract_frame(frame, include_values: bool = False) -> Dict[str, object]:
     return await frame.evaluate(
-            """
+        """
             (includeValues) => {
               const labelTextFor = (el) => {
                 const id = el.getAttribute('id');
@@ -377,101 +306,130 @@ async def extract_frame(frame, include_values: bool = False) -> Dict[str, object
                 headings: Array.from(document.querySelectorAll('h1,h2,h3,h4,legend,[role="heading"]')).filter(visible).map(el => (el.innerText || '').trim()).filter(Boolean)
               };
             }
-            """, include_values
-        )
+            """,
+        include_values,
+    )
 
 
-def site_matches_url(site_key: str, url: str) -> bool:
-    host = (urlparse(url).hostname or '').lower()
-    domain = (urlparse(str(SITE_TARGETS[site_key]['candidate_urls'][0])).hostname or '').removeprefix('www.')
-    return host == domain or host.endswith('.' + domain)
-
-
-async def capture_page(page, site_key: str, include_values: bool = False) -> Dict[str, object]:
+async def capture_page(
+    page, site_key: str, include_values: bool = False, registry=None
+) -> Dict[str, object]:
+    registry = registry or SiteRegistry()
+    if registry.is_custom(site_key) and not registry.matches_url(site_key, page.url):
+        raise ValueError("Page moved outside the allowed company origins")
     snapshot = await extract_frame(page.main_frame, include_values)
-    snapshot['frames'] = []
+    snapshot["frames"] = []
+
     # Frame paths preserve parent scope when names/URLs repeat in nested editors.
     async def walk(parent, path):
         for index, frame in enumerate(parent.child_frames):
             frame_path = [*path, index]
+            if (
+                registry.is_custom(site_key)
+                and frame.url not in {"about:blank", "about:srcdoc"}
+                and not registry.matches_url(site_key, frame.url)
+            ):
+                snapshot["frames"].append(
+                    {"frame_path": frame_path, "error": "unapproved_origin"}
+                )
+                continue
             try:
                 child = await extract_frame(frame, include_values)
-                for field in child['fields']:
-                    field['frame_path'] = frame_path
-                    field['frame_url'] = frame.url
-                snapshot['fields'].extend(child['fields'])
-                snapshot['frames'].append({'frame_path': frame_path, 'snapshot': child})
+                for field in child["fields"]:
+                    field["frame_path"] = frame_path
+                    field["frame_url"] = frame.url
+                snapshot["fields"].extend(child["fields"])
+                snapshot["frames"].append({"frame_path": frame_path, "snapshot": child})
             except Exception as exc:
-                snapshot['frames'].append({'frame_path': frame_path, 'error': type(exc).__name__})
+                snapshot["frames"].append(
+                    {"frame_path": frame_path, "error": type(exc).__name__}
+                )
             await walk(frame, frame_path)
+
     await walk(page.main_frame, [])
-    return {'site_key': site_key, 'site_name': SITE_TARGETS[site_key]['name'], 'snapshot': snapshot}
+    return {
+        "site_key": site_key,
+        "site_name": registry.target(site_key)["name"],
+        "snapshot": snapshot,
+    }
 
 
-async def launch_site_context(playwright, site_key: str, headed: bool = True,
-                              browser_path: Optional[str] = None):
-    options = {'headless': not headed, 'locale': 'ko-KR',
-               'viewport': {'width': 1440, 'height': 1100}}
-    executable_path = browser_path or find_local_browser()
-    if executable_path:
-        options['executable_path'] = executable_path
-    profile = Path(__file__).resolve().parent / 'result' / 'browser_profiles' / site_key
-    return await playwright.chromium.launch_persistent_context(str(profile), **options)
-
-
-async def playwright_extract(site_key: str, headed: bool, wait_seconds: int,
-                             browser_path: Optional[str], interactive: bool = False,
-                             include_values: bool = False, start_url: Optional[str] = None) -> Dict[str, object]:
+async def playwright_extract(
+    site_key: str,
+    headed: bool,
+    wait_seconds: int,
+    browser_path: Optional[str],
+    interactive: bool = False,
+    include_values: bool = False,
+    start_url: Optional[str] = None,
+    registry=None,
+) -> Dict[str, object]:
     try:
         from playwright.async_api import async_playwright
     except ImportError as exc:
-        raise SystemExit('Install browser support: uv sync --extra browser') from exc
-    target = SITE_TARGETS[site_key]
-    start_url = start_url or str(target['candidate_urls'][0])
-    if not site_matches_url(site_key, start_url):
-        raise ValueError('Start URL must belong to the selected site')
+        raise SystemExit("Install browser support: uv sync --extra browser") from exc
+    registry = registry or SiteRegistry()
+    target = registry.target(site_key)
+    start_url = start_url or str(target["candidate_urls"][0])
+    if not registry.matches_url(site_key, start_url):
+        raise ValueError("Start URL must belong to the selected site")
     async with async_playwright() as p:
-        context = await launch_site_context(p, site_key, headed, browser_path)
-        try:
+        async with BrowserSession(
+            p, site_key, headed=headed, browser_path=browser_path, registry=registry
+        ) as context:
             page = context.pages[0] if context.pages else await context.new_page()
-            await page.goto(start_url, wait_until='domcontentloaded', timeout=60_000)
+            await page.goto(start_url, wait_until="domcontentloaded", timeout=60_000)
             if interactive:
-                print('직접 로그인 후 이력서 수정 화면으로 이동하세요.')
-                print('Enter: 열린 사이트 탭 수집 / q: 종료. 섹션·팝업을 열고 반복 수집할 수 있습니다.')
+                print("직접 로그인 후 이력서 수정 화면으로 이동하세요.")
+                print(
+                    "Enter: 열린 사이트 탭 수집 / q: 종료. 섹션·팝업을 열고 반복 수집할 수 있습니다."
+                )
                 captures = []
                 while True:
                     try:
-                        command = await asyncio.to_thread(input, 'capture> ')
+                        command = await asyncio.to_thread(input, "capture> ")
                     except EOFError:
                         break
-                    if command.strip().lower() == 'q':
+                    if command.strip().lower() == "q":
                         break
                     for candidate in list(context.pages):
-                        if candidate.is_closed() or not site_matches_url(site_key, candidate.url):
+                        if candidate.is_closed() or not registry.matches_url(
+                            site_key, candidate.url
+                        ):
                             continue
-                        payload = await capture_page(candidate, site_key, include_values)
-                        stamp = datetime.now().strftime('%Y%m%d_%H%M%S_%f')
-                        path = write_json(f'{site_key}_playwright_{stamp}.json', payload)
+                        payload = await capture_page(
+                            candidate, site_key, include_values, registry
+                        )
+                        stamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+                        path = write_json(
+                            f"{site_key}_playwright_{stamp}.json", payload
+                        )
                         captures.append(path)
-                        print(f"저장: {path} (fields={len(payload['snapshot']['fields'])})")
-                return {'captures': captures}
+                        print(
+                            f"저장: {path} (fields={len(payload['snapshot']['fields'])})"
+                        )
+                return {"captures": captures}
             if headed:
-                print(f'직접 로그인 후 수정 화면으로 이동하세요. {wait_seconds}초 후 수집합니다.')
+                print(
+                    f"직접 로그인 후 수정 화면으로 이동하세요. {wait_seconds}초 후 수집합니다."
+                )
             await page.wait_for_timeout((wait_seconds if headed else 5) * 1000)
-            pages = [tab for tab in context.pages if not tab.is_closed() and site_matches_url(site_key, tab.url)]
+            pages = [
+                tab
+                for tab in context.pages
+                if not tab.is_closed() and registry.matches_url(site_key, tab.url)
+            ]
             if not pages:
-                raise RuntimeError('No target-site tab remains open')
-            return await capture_page(pages[-1], site_key, include_values)
-        finally:
-            await context.close()
+                raise RuntimeError("No target-site tab remains open")
+            return await capture_page(pages[-1], site_key, include_values, registry)
 
 
 def write_json(name: str, payload: object) -> str:
-    out_dir = ensure_output_dir()
-    path = os.path.join(out_dir, name)
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(payload, f, ensure_ascii=False, indent=2)
-    return path
+    return str(
+        ArtifactStore(ProjectPaths().results / "site_form_maps").write_json(
+            name, payload
+        )
+    )
 
 
 def static_probe(sites: List[str]) -> List[Dict[str, object]]:
@@ -482,28 +440,60 @@ def static_probe(sites: List[str]) -> List[Dict[str, object]]:
     return payload
 
 
-def default_sites() -> List[str]:
-    return ["catch", "jobkorea", "saramin", "wanted", "incruit"]
-
-
-async def main() -> None:
+async def main(argv=None) -> None:
     parser = argparse.ArgumentParser(description="채용 사이트 이력서 폼 요소 수집기")
-    parser.add_argument("--sites", nargs="+", default=default_sites(), help="catch jobkorea saramin wanted incruit")
+    parser.add_argument(
+        "--sites",
+        nargs="+",
+        default=default_sites(),
+        help="catch jobkorea saramin wanted incruit",
+    )
     parser.add_argument("--mode", choices=["static", "playwright"], default="static")
-    parser.add_argument("--headed", action="store_true", help="Playwright 브라우저를 보이게 열고 수동 로그인 후 추출")
-    parser.add_argument("--wait-seconds", type=int, default=90, help="headed 모드에서 수동 로그인/이동 대기 시간")
-    parser.add_argument("--browser-path", default=None, help="Chrome/Edge 실행 파일 경로. 생략하면 로컬 Chrome/Edge 자동 탐색")
-    parser.add_argument('--interactive', action='store_true', help='Enter마다 화면 수집, q로 종료 (headed 필수)')
-    parser.add_argument('--include-values', action='store_true', help='로컬 스냅샷에 입력값 미리보기 포함 (기본 제외)')
-    parser.add_argument('--url', help='실제 화면에서 확인한 시작 URL (사이트 1개만 선택)')
-    args = parser.parse_args()
-    if args.interactive and (args.mode != 'playwright' or not args.headed):
-        parser.error('--interactive requires --mode playwright --headed')
-    if args.url and (len(args.sites) != 1 or args.mode != 'playwright'):
-        parser.error('--url requires one site and --mode playwright')
+    parser.add_argument(
+        "--headed",
+        action="store_true",
+        help="Playwright 브라우저를 보이게 열고 수동 로그인 후 추출",
+    )
+    parser.add_argument(
+        "--wait-seconds",
+        type=int,
+        default=90,
+        help="headed 모드에서 수동 로그인/이동 대기 시간",
+    )
+    parser.add_argument(
+        "--browser-path",
+        default=None,
+        help="Chrome/Edge 실행 파일 경로. 생략하면 로컬 Chrome/Edge 자동 탐색",
+    )
+    parser.add_argument(
+        "--interactive",
+        action="store_true",
+        help="Enter마다 화면 수집, q로 종료 (headed 필수)",
+    )
+    parser.add_argument(
+        "--include-values",
+        action="store_true",
+        help="로컬 스냅샷에 입력값 미리보기 포함 (기본 제외)",
+    )
+    parser.add_argument(
+        "--url", help="실제 화면에서 확인한 시작 URL (사이트 1개만 선택)"
+    )
+    parser.add_argument(
+        "--target", help="Registered company target JSON (Playwright only)"
+    )
+    args = parser.parse_args(argv)
+    registry = SiteRegistry.from_file(args.target)
+    if args.target:
+        if args.mode != "playwright":
+            parser.error("--target requires --mode playwright")
+        args.sites = [registry.custom_key]
+    if args.interactive and (args.mode != "playwright" or not args.headed):
+        parser.error("--interactive requires --mode playwright --headed")
+    if args.url and (len(args.sites) != 1 or args.mode != "playwright"):
+        parser.error("--url requires one site and --mode playwright")
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    sites = [normalize_site(site) for site in args.sites]
+    sites = [registry.normalize(site) for site in args.sites]
 
     if args.mode == "static":
         payload = static_probe(sites)
@@ -527,6 +517,7 @@ async def main() -> None:
             interactive=args.interactive,
             include_values=args.include_values,
             start_url=args.url,
+            registry=registry,
         )
         if args.interactive:
             continue

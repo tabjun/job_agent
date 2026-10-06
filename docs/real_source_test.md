@@ -25,7 +25,7 @@
 ## 재현
 
 ```powershell
-.\.venv\Scripts\python.exe resume_source.py --source 'knowledge/윤태준 경력 이력서.docx'
+.\.venv\Scripts\python.exe -m job_agent source --source 'knowledge/윤태준 경력 이력서.docx'
 $env:RESUME_TEST_DOCX = 'knowledge/윤태준 경력 이력서.docx'
 .\.venv\Scripts\python.exe -m unittest discover -s tests -v
 ```

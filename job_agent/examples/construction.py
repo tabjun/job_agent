@@ -1,14 +1,13 @@
 import asyncio
-import os
-from typing import List, Dict
 from langchain_core.tools import tool
 from langchain_tavily import TavilySearch
-from agent import LangGraphAgentEngine
-from dotenv import load_dotenv
+from job_agent.core.engine import LangGraphAgentEngine
+from job_agent.core.paths import ProjectPaths, load_environment
 
-load_dotenv()
+load_environment()
 
 # [1. 건설 특화 에이전트 도구 정의]
+
 
 @tool
 async def search_construction_trends(topic: str):
@@ -21,6 +20,7 @@ async def search_construction_trends(topic: str):
     results = await search.ainvoke(query)
     return results
 
+
 @tool
 async def analyze_construction_company(company_name: str):
     """
@@ -32,6 +32,7 @@ async def analyze_construction_company(company_name: str):
     results = await search.ainvoke(query)
     return results
 
+
 @tool
 async def generate_career_roadmap(user_info: str):
     """
@@ -40,16 +41,22 @@ async def generate_career_roadmap(user_info: str):
     # 에이전트가 내부적으로 지식을 조합하여 응답할 수 있도록 가이드만 제공
     return f"건설 데이터 사이언티스트 로드맵 생성 가이드: {user_info}를 바탕으로 주니어->시니어->리더 단계별 전략 수립 필요."
 
+
 @tool
 async def read_top_30_report():
     """
     대한민국 상위 30개 건설사의 AI 및 데이터 분석 활용 사례에 대한 상세 보고서를 읽습니다.
     """
     try:
-        with open("result/top_30_construction_ai_report.md", "r", encoding="utf-8") as f:
+        with open(
+            ProjectPaths().results / "top_30_construction_ai_report.md",
+            "r",
+            encoding="utf-8",
+        ) as f:
             return f.read()
     except Exception as e:
         return f"보고서를 읽는 중 오류가 발생했습니다: {e}"
+
 
 # [2. 건설 데이터 전략 에이전트 페르소나]
 CONSTRUCTION_PROMPT = """
@@ -72,20 +79,27 @@ CONSTRUCTION_PROMPT = """
 필요하다면 'read_top_30_report' 도구를 사용하여 최신 정보를 확인하세요.
 """
 
+
 async def run_construction_consulting(user_query: str):
     engine = LangGraphAgentEngine(
-        tools=[search_construction_trends, analyze_construction_company, generate_career_roadmap, read_top_30_report],
-        system_prompt=CONSTRUCTION_PROMPT
+        tools=[
+            search_construction_trends,
+            analyze_construction_company,
+            generate_career_roadmap,
+            read_top_30_report,
+        ],
+        system_prompt=CONSTRUCTION_PROMPT,
     )
-    
+
     print(f"\n[건설 데이터 전략 컨설팅 시작]: {user_query}")
-    print("="*60)
+    print("=" * 60)
 
     async for event in engine.run(user_query):
         for node_name, content in event.items():
             for msg in content.get("messages", []):
-                if msg.content:
-                    print(msg.content)
+                if msg.text:
+                    print(msg.text)
+
 
 if __name__ == "__main__":
     user_input = "서한 건설 데이터 분석가 이직 전망과 로드맵 그려줘"

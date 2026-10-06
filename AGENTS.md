@@ -31,12 +31,12 @@
 
 아키텍처는 3개 에이전트 파이프라인이다(다이어그램: `images/project_archi.png`, 상세: `README.md`).
 
-- **Agent 1 (Job Search & Resume Reviser)**: `job_hunter.py`(공고 탐색·기업분석, 실행 가능), `revise_resume.py`(이력서/자소서 맞춤화)
-- **Agent 2 (Master Resume Builder)**: `resume_source.py`, `resume_library.py`(명시 선택 DOCX 추출·문단 근거 연결·검수된 공통 이력서 JSON/Markdown 컴파일). 완전 자율 사실 정규화나 문장 사실성 자동 판정은 미구현이며, 원문 검수가 필요하다.
-- **Agent 3 (ResumeOps Sync)**: `site_resume_agent.py`, `site_form_mapper.py`, `site_form_connector.py`, `site_form_filler.py`(사이트별 규격 변환·DOM 수집·폼 매핑·검수된 필드 입력, Playwright 반자동 — 로그인·최종저장은 사용자)
-- 공용 엔진: `agent.py`(`LangGraphAgentEngine`)
-- LangChain/LangGraph 예제 및 실험: `langchain_agent.py`, `langgraph_agent.py`
-- 기타 실험: `construction_agent.py`
+- **Agent 1 (Job Search & Resume Reviser)**: `job_agent/agents/job_hunter.py`(공고 탐색·기업분석, 실행 가능), `job_agent/agents/resume_reviser.py`(이력서/자소서 맞춤화)
+- **Agent 2 (Master Resume Builder)**: `job_agent/documents/source.py`, `job_agent/documents/library.py`(명시 선택 DOCX 추출·문단 근거 연결·검수된 공통 이력서 JSON/Markdown 컴파일). 완전 자율 사실 정규화나 문장 사실성 자동 판정은 미구현이며, 원문 검수가 필요하다.
+- **Agent 3 (ResumeOps Sync)**: `job_agent/agents/site_resume.py`, `job_agent/browser/mapper.py`, `job_agent/browser/connector.py`, `job_agent/browser/filler.py`(사이트별 규격 변환·DOM 수집·폼 매핑·검수된 필드 입력, Playwright 반자동 — 로그인·최종저장은 사용자)
+- 공용 엔진: `job_agent/core/engine.py`(`LangGraphAgentEngine`)
+- LangChain/LangGraph 예제 및 실험: `job_agent/examples/langchain_demo.py`, `job_agent/examples/langgraph_demo.py`
+- 기타 실험: `job_agent/examples/construction.py`
 - 사용자 사실 데이터: `knowledge/`, `more_info/`
 - 결과물: `result/`
 - **원칙: 공고 탐색·서류 생성은 AI, 최종 검토·저장·제출은 사용자(Human-in-the-loop).**

@@ -1,21 +1,25 @@
-import asyncio
 import operator
 import os
 from typing import Annotated, TypedDict, List, Any, Dict, AsyncGenerator
-from dotenv import load_dotenv
+from job_agent.core.paths import load_environment
 
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
-from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage, ToolMessage
-from langchain_core.tools import tool
+from langchain_core.messages import (
+    BaseMessage,
+    HumanMessage,
+    SystemMessage,
+    ToolMessage,
+)
 from langgraph.graph import StateGraph, END
 
 # .env 파일을 통해 환경 변수(Google API Key 등)를 로드합니다.
-load_dotenv()
+load_environment()
 
 # 환경 변수 설정 (Google API Key 호환성 처리)
 if not os.getenv("GOOGLE_API_KEY") and os.getenv("GOOGLE_AI_API_KEY"):
     os.environ["GOOGLE_API_KEY"] = os.getenv("GOOGLE_AI_API_KEY")
+
 
 class AgentState(TypedDict):
     """
@@ -24,7 +28,9 @@ class AgentState(TypedDict):
     각 노드에서 생성된 메시지가 덮어씌워지지 않고 계속 누적되도록 합니다.
     이것이 에이전트가 대화의 문맥을 잃지 않는 핵심 장치입니다.
     """
+
     messages: Annotated[List[BaseMessage], operator.add]
+
 
 class LangGraphAgentEngine:
     """
@@ -32,24 +38,43 @@ class LangGraphAgentEngine:
     이 엔진은 '판단(LLM)'과 '실행(Tools)'을 반복하는 순환 구조(Cycle)를 구축합니다.
     어떤 특화 에이전트든 이 엔진 위에 도구와 프롬프트만 주입하여 생성할 수 있습니다.
     """
-    def __init__(self, use_model: str = "gemini", tools: List[Any] = None, system_prompt: str = ""):
+
+    def __init__(
+        self,
+        use_model: str = "gemini",
+        tools: List[Any] = None,
+        system_prompt: str = "",
+    ):
         """
         엔진 초기화 시 사용할 모델 타입, 도구 목록, 그리고 에이전트의 페르소나(System Prompt)를 설정합니다.
         """
         self.tools = tools or []
         self.system_prompt = system_prompt
-        
+
         # 모델 선택 로직: 설정에 따라 GPT 또는 Gemini 모델을 초기화하고 도구를 바인딩합니다.
         if use_model == "gpt":
-            print("[System] 메인 모델로 GPT-5-mini를 사용합니다. (유료 토큰 소모)")
-            self.llm = ChatOpenAI(model="gpt-5-mini", temperature=0).bind_tools(self.tools)
+            openai_model = os.getenv("OPENAI_MODEL", "gpt-6-luna")
+            print(f"[System] OpenAI({openai_model})를 사용합니다. (API 사용량 과금)")
+            # Preserve reasoning blocks so the next tool turn can replay them.
+            self.llm = ChatOpenAI(
+                model=openai_model,
+                use_responses_api=True,
+                reasoning={"effort": "medium"},
+                output_version="responses/v1",
+                store=False,
+                include=["reasoning.encrypted_content"],
+            ).bind_tools(self.tools)
         else:
             # gemini-1.5-pro는 2025-09-24부로 서비스 종료되어 호출 시 에러를 반환한다.
             # 현행 무료/저가 모델인 gemini-2.0-flash로 교체한다. (env GEMINI_MODEL로 재정의 가능)
             gemini_model = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
-            print(f"[System] 메인 모델로 Gemini({gemini_model})를 사용합니다. (무료 티어)")
-            self.llm = ChatGoogleGenerativeAI(model=gemini_model, temperature=0).bind_tools(self.tools)
-        
+            print(
+                f"[System] Gemini({gemini_model})를 사용합니다. (계정별 할당량/과금 확인)"
+            )
+            self.llm = ChatGoogleGenerativeAI(
+                model=gemini_model, temperature=0
+            ).bind_tools(self.tools)
+
         # 도구 실행 시 이름으로 빠르게 조회하기 위해 딕셔너리로 관리합니다.
         self.tools_dict = {t.name: t for t in self.tools}
         # 최종적으로 컴파일된 그래프 애플리케이션입니다.
@@ -57,14 +82,14 @@ class LangGraphAgentEngine:
 
     def _build_graph(self):
         """
-        StateGraph를 생성하고 노드(Node)와 엣지(Edge)를 연결하여 
+        StateGraph를 생성하고 노드(Node)와 엣지(Edge)를 연결하여
         전체적인 사고 흐름을 설계합니다.
         """
         workflow = StateGraph(AgentState)
 
         # 1. 노드 등록: 실제 수행할 함수들을 그래프에 추가합니다.
-        workflow.add_node("llm_think", self.call_model)      # AI가 생각하는 단계
-        workflow.add_node("execute_tools", self.execute_tools) # 도구를 실행하는 단계
+        workflow.add_node("llm_think", self.call_model)  # AI가 생각하는 단계
+        workflow.add_node("execute_tools", self.execute_tools)  # 도구를 실행하는 단계
 
         # 2. 시작점 설정: 그래프가 실행되면 llm_think 노드부터 시작합니다.
         workflow.set_entry_point("llm_think")
@@ -74,9 +99,9 @@ class LangGraphAgentEngine:
             "llm_think",
             self.should_continue,
             {
-                "continue": "execute_tools", # 도구 사용이 필요하면 도구 실행 노드로
-                "end": END                   # 답변이 충분하면 종료(END)로
-            }
+                "continue": "execute_tools",  # 도구 사용이 필요하면 도구 실행 노드로
+                "end": END,  # 답변이 충분하면 종료(END)로
+            },
         )
 
         # 4. 순환 연결: 도구 실행이 끝나면 다시 모델에게 판단을 맡기기 위해 복귀합니다.
@@ -90,11 +115,13 @@ class LangGraphAgentEngine:
         모델의 응답은 다시 메시지 리스트에 추가됩니다.
         """
         messages = state["messages"]
-        
+
         # 시스템 프롬프트가 설정되어 있고, 대화의 처음에만 주입하여 정체성을 고정합니다.
-        if self.system_prompt and not any(isinstance(m, SystemMessage) for m in messages):
+        if self.system_prompt and not any(
+            isinstance(m, SystemMessage) for m in messages
+        ):
             messages = [SystemMessage(content=self.system_prompt)] + messages
-            
+
         try:
             response = await self.llm.ainvoke(messages)
             return {"messages": [response]}
@@ -109,31 +136,32 @@ class LangGraphAgentEngine:
         """
         last_message = state["messages"][-1]
         tool_outputs = []
-        
+
         # 모델의 응답에 담긴 모든 도구 호출 요청을 순차적으로 처리합니다.
         for tool_call in last_message.tool_calls:
             tool_name = tool_call["name"]
             tool_args = tool_call["args"]
-            
+
             if tool_name in self.tools_dict:
                 action = self.tools_dict[tool_name]
                 print(f"  >> 도구 실행: {tool_name}")
-                
+
                 try:
                     output = await action.ainvoke(tool_args)
-                    tool_outputs.append(ToolMessage(
-                        content=str(output),
-                        tool_call_id=tool_call["id"]
-                    ))
+                    tool_outputs.append(
+                        ToolMessage(content=str(output), tool_call_id=tool_call["id"])
+                    )
                 except Exception as e:
                     print(f"  >> [오류] 도구 실행 중 에러 발생: {e}")
-                    tool_outputs.append(ToolMessage(
-                        content=f"Error: {str(e)}\nPlease check the arguments and try again.",
-                        tool_call_id=tool_call["id"]
-                    ))
+                    tool_outputs.append(
+                        ToolMessage(
+                            content=f"Error: {str(e)}\nPlease check the arguments and try again.",
+                            tool_call_id=tool_call["id"],
+                        )
+                    )
             else:
                 print(f"  >> [경고] 존재하지 않는 도구 호출 시도: {tool_name}")
-                
+
         return {"messages": tool_outputs}
 
     def should_continue(self, state: AgentState) -> str:

@@ -59,4 +59,4 @@
 
 ## 실행 범위
 
-`site_form_mapper.py`로 현재 편집 화면을 수집하고, `site_form_connector.py`로 후보를 만든다. 검수한 mapping 항목에만 `"approved": true`를 추가한다. `site_form_filler.py`는 패키지 원문 값을 읽고 selector 유일성·편집 가능 여부·길이·중복 대상·iframe 위치를 검사한다. 기본은 검증만이며 `--apply`와 터미널의 `APPLY` 입력이 있어야 실제 값을 채운다. 저장/제출 클릭, 반복 항목 생성, custom combobox 선택은 이 실행기의 범위 밖이다.
+`job_agent/browser/mapper.py`로 현재 편집 화면을 수집하고, `job_agent/browser/connector.py`로 후보를 만든다. 검수한 mapping 항목에만 `"approved": true`를 추가한다. `job_agent/browser/filler.py`는 패키지 원문 값을 읽고 selector 유일성·편집 가능 여부·길이·중복 대상·iframe 위치를 검사한다. 기본은 검증만이며 `--apply`와 터미널의 `APPLY` 입력이 있어야 실제 값을 채운다. 저장/제출 클릭, 반복 항목 생성, custom combobox 선택은 이 실행기의 범위 밖이다.

@@ -1,6 +1,16 @@
 # process.md
 
+## 패키지 실행 기준
+
+- 실행은 `uv sync --extra browser` 후 `uv run job-agent <명령>` 또는 `python -m job_agent <명령>`을 사용한다. 전체 명령은 `uv run job-agent --help`에서 확인한다.
+- Python 코드는 `job_agent/{core,agents,documents,browser,sites,examples}/`에 둔다. 지침 Markdown은 루트에 유지하고, 운영 기록은 `docs/`, 테스트는 `tests/`에 둔다.
+- 자료·결과의 상대 경로는 `ProjectPaths`를 통해 프로젝트 루트 기준으로 해석한다. `knowledge/`, `more_info/`, `result/` 및 사이트 로그인 프로필은 옮기지 않는다.
+- 문서 원문/근거는 `DocxReader`와 `ResumeLibrary`, 로컬 컨텍스트는 `UserContextLoader`, 세션 수명은 `BrowserSession`, 검수된 입력은 `FormFiller`, 출력 경계는 `ArtifactStore`가 담당한다. 순수 매핑 로직은 상태 없는 함수로 유지한다.
+- 리팩터링 검증은 실제 자료 통합 환경변수와 함께 `python -m unittest discover -s tests -v`로 수행한다. 기존 master package를 재컴파일해 비교하되, 새 검증 결과는 ignored `result/refactor_verification/`에 저장해 원본 결과를 덮어쓰지 않는다.
+
 ## 현재 운용 절차
+
+회사 자체 사이트는 `target-register --key company-<slug> --name <회사명> --url <작성URL>`로 등록한다. 다른 host/iframe은 확인한 origin만 `--allow-origin`에 추가한다. `form-map --target <JSON> --mode playwright --headed --interactive`로 로그인 후 화면별 수집한다. `application-prepare --target <JSON> --master <검수master> --form-map <JSON>`으로 schema/bindings/package/mapping/review를 생성한다. 미연결 문항은 검수 master에 근거와 함께 먼저 작성하고, bindings 수정 후 `--bindings <JSON>`으로 재변환한다. 생성 mapping은 항상 미승인, `form-fill --site company-<slug> --target <JSON>` 기본은 검증만이다. 단계별 출력 폴더를 분리하고 최종 저장/지원은 수동으로 수행한다.
 
 1. 작업 전 `git status --short --branch`로 브랜치와 미커밋 변경을 확인한다.
 2. `AGENTS.md`, `skills.md`, `history.md`, `conversation_l2_cache.md`를 확인한다.
@@ -62,27 +72,27 @@ flowchart TD
 
 ## 향후 아키텍처: 사이트별 이력서 저장 에이전트
 
-2026-10-07 실제 작성에는 `resume_library.py extract --source <DOCX>`(반복 지정)로 명시 선택 자료만 추출하고, 문단 근거를 연결한 로컬 `reviewed_draft.json`을 `build --corpus <JSON> --draft <JSON>`으로 컴파일했다. 공통 master/사이트 패키지는 ignored `result/`에만 둔다. 5개 사이트에 검수용 이력서를 입력했으며, 이번에는 원복하지 않았다. 원티드만 자동저장 후 새로고침 유지까지 확인했고, 나머지 최종 저장은 사용자에게 넘긴다. 작성 상세 및 미작성 항목은 `docs/resume_authoring.md`가 최신 기준이다.
+2026-10-07 실제 작성에는 `job_agent/documents/library.py extract --source <DOCX>`(반복 지정)로 명시 선택 자료만 추출하고, 문단 근거를 연결한 로컬 `reviewed_draft.json`을 `build --corpus <JSON> --draft <JSON>`으로 컴파일했다. 공통 master/사이트 패키지는 ignored `result/`에만 둔다. 5개 사이트에 검수용 이력서를 입력했으며, 이번에는 원복하지 않았다. 원티드만 자동저장 후 새로고침 유지까지 확인했고, 나머지 최종 저장은 사용자에게 넘긴다. 작성 상세 및 미작성 항목은 `docs/resume_authoring.md`가 최신 기준이다.
 
 2026-10-06 우선 대상은 캐치·잡코리아·사람인·원티드·인크루트다. ALIO API 연동은 취소한다. 로그인된 실제 화면을 조사하고, 확인되지 않은 이력서 편집 URL이나 selector를 확정값으로 사용하지 않는다.
 
-수집 명령: `uv sync --extra browser` 후 `python site_form_mapper.py --mode playwright --sites catch --headed --interactive`. 전용 프로필은 `result/browser_profiles/`에서 재사용하며, Enter마다 해당 사이트 탭과 iframe을 수집한다. 섹션 추가/편집 팝업을 열고 반복 수집한다. 값 미리보기는 기본 제외, 필요하면 `--include-values`를 사용한다. 연결기의 후보를 개별 검수하여 `approved: true`를 표시한다. `site_form_filler.py` 기본 실행은 검증만, `--apply`와 터미널 `APPLY` 입력 시 기존 텍스트/native select/contenteditable에 입력한다. 저장 버튼은 사용자가 처리하며, 사이트 자동저장이 있을 수 있으므로 실제 입력 전 값을 검수한다. 반복 항목 생성과 custom 선택 UI는 미구현이다.
+수집 명령: `uv sync --extra browser` 후 `python -m job_agent form-map --mode playwright --sites catch --headed --interactive`. 전용 프로필은 `result/browser_profiles/`에서 재사용하며, Enter마다 해당 사이트 탭과 iframe을 수집한다. 섹션 추가/편집 팝업을 열고 반복 수집한다. 값 미리보기는 기본 제외, 필요하면 `--include-values`를 사용한다. 연결기의 후보를 개별 검수하여 `approved: true`를 표시한다. `job_agent/browser/filler.py` 기본 실행은 검증만, `--apply`와 터미널 `APPLY` 입력 시 기존 텍스트/native select/contenteditable에 입력한다. 저장 버튼은 사용자가 처리하며, 사이트 자동저장이 있을 수 있으므로 실제 입력 전 값을 검수한다. 반복 항목 생성과 custom 선택 UI는 미구현이다.
 
-`site_resume_agent.py`는 이력서 원본을 채용 사이트별 입력 양식으로 변환하는 1단계 에이전트다.
+`job_agent/agents/site_resume.py`는 이력서 원본을 채용 사이트별 입력 양식으로 변환하는 1단계 에이전트다.
 
 현재 범위:
 - 캐치, 잡코리아, 사람인, 원티드, 인크루트를 우선 지원한다. 기존 점핏/LinkedIn 프로필은 보조 대상이다.
 - `knowledge/`와 `more_info/`를 읽어 사이트별 JSON/Markdown 입력 패키지를 만든다.
 - 산출물은 `result/site_resumes/`에 저장한다.
-- `site_form_mapper.py`로 공개 접근/로그인 화면/이력서 화면의 DOM 요소를 추출한다.
-- `site_form_connector.py`로 입력 패키지 필드와 DOM selector 후보를 연결한다.
+- `job_agent/browser/mapper.py`로 공개 접근/로그인 화면/이력서 화면의 DOM 요소를 추출한다.
+- `job_agent/browser/connector.py`로 입력 패키지 필드와 DOM selector 후보를 연결한다.
 - 검수된 기존 필드의 입력 실행기가 있다. 실제 DOCX로 캐치/잡코리아/사람인 경력 및 원티드 소개 입력 smoke test 후 기존 값 복원 완료. 원티드 blur 자동저장 확인 및 복원 새로고침 검증. 전체 저장 흐름과 Python 전용 로그인 CLI의 실사이트 실행은 아직 미검증. 저장 버튼은 사용자가 처리한다. 자세한 범위는 `docs/real_source_test.md` 참조.
 
 다음 확장 순서:
 1. 사용자가 실제로 많이 쓰는 사이트 1개를 고른다.
 2. 해당 사이트의 이력서 입력 화면 필드와 필수값을 수동으로 확인한다.
-3. `site_form_mapper.py --mode playwright --headed`로 로그인 후 실제 이력서 화면 selector를 추출한다.
-4. `site_form_connector.py`로 입력 패키지와 selector를 매핑한다.
+3. `job_agent/browser/mapper.py --mode playwright --headed`로 로그인 후 실제 이력서 화면 selector를 추출한다.
+4. `job_agent/browser/connector.py`로 입력 패키지와 selector를 매핑한다.
 5. 브라우저 자동화는 "초안 입력 → 사용자 검수 → 저장" 순서로만 붙인다.
 6. 제출/지원 버튼은 별도 명시 승인 없이는 누르지 않는다.
 
