@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="ko">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Resume Workspace</title><link rel="stylesheet" href="/style.css"><script defer src="/lucide.min.js"></script><script defer src="/fflate.min.js"></script><script defer src="/resume-forms.js"></script><script defer src="/resume-files.js"></script><script defer src="/app.js"></script><script defer src="/handoff.js"></script><script defer src="/portals.js"></script><script defer src="/tutorials.js"></script></head>
+<body>
+<aside class="sidebar">
+  <a class="brand" href="/"><span class="brand-mark"><i data-lucide="briefcase-business"></i></span><span>Resume<span class="brand-sub">WORKSPACE</span></span></a>
+  <div class="nav-label">작업 공간</div>
+  <nav aria-label="작업"><button class="nav active" data-view="guide"><i data-lucide="route"></i>처음 사용하기</button><button class="nav" data-view="search"><i data-lucide="search"></i>공고 탐색</button><button class="nav" data-view="resume"><i data-lucide="file-text"></i>이력서 정리</button><button class="nav" data-view="prepare"><i data-lucide="panels-top-left"></i>플랫폼 이력서 전환</button></nav>
+  <div class="sidebar-footer"><span class="dot"></span>로컬 작업 공간<span>최종 저장·지원은 사용자 확인</span></div>
+</aside>
+<main>
+  <header class="topbar"><span id="breadcrumb">작업 공간 / 처음 사용하기</span><span class="local-badge"><i data-lucide="shield-check"></i>LOCAL</span></header>
+  <div class="workspace">
+    <div class="page-heading"><div><p class="eyebrow">CAREER OPERATIONS</p><h1 id="page-title">처음 사용하기</h1></div><div class="heading-actions"><button id="examples-help" class="icon-button" title="이 화면의 사용 예시" aria-label="이 화면의 사용 예시"><i data-lucide="circle-help"></i></button><span class="date" id="today"></span></div></div>
+    <div id="notice" role="status" hidden></div>
+    <p id="visitor-notice" class="example-caution" hidden>입력과 결과는 임시 메모리에서만 처리합니다. 보관하려면 내 기기로 다운로드하세요. 실제 사이트 저장은 이 공개 체험에서 제공하지 않습니다.</p>
+    <section id="handoff-approval" hidden>
+      <h2>내 PC로 이력서 받기</h2><p id="handoff-origin"></p><pre id="handoff-preview"></pre>
+      <label class="consent"><input type="checkbox" id="handoff-allow">요청한 웹사이트와 이력서를 확인했으며 내 PC 작업 공간으로 가져오기에 동의</label>
+      <button id="handoff-accept" class="primary" type="button" disabled><i data-lucide="import"></i>이력서 가져오기</button><button id="handoff-reject" class="text-button" type="button"><i data-lucide="x"></i>거절</button>
+    </section>
+    <section class="view" id="guide-view">
+      <div class="guide-intro"><h2>내 경험을 정리하고, 지원할 곳의 양식으로</h2><p>흩어진 경력·프로젝트·기술을 공통 이력서에 모으고, 지원 직무에 맞게 순서를 정리한 뒤 회사별 입력 항목에 연결합니다. 공고 탐색만 따로 이용해도 됩니다.</p></div>
+      <section class="guide-band" aria-labelledby="guide-search-title">
+        <div class="guide-heading"><i data-lucide="search"></i><div><span class="eyebrow">독립 작업</span><h3 id="guide-search-title">공고만 살펴보고 싶다면</h3></div></div>
+        <p>공고 탐색에서 공고 원문과 키워드를 넣고, 관련 공고와 원문 링크를 확인하세요. 이력서 등록이나 회사 양식 변환은 필요하지 않습니다. 현재 공개 웹은 직접 입력한 공고를 정리하며 채용사이트 전체를 자동 수집하지 않습니다.</p>
+        <button type="button" class="text-button" data-guide-action="search"><i data-lucide="arrow-right"></i>공고 탐색 열기</button>
+      </section>
+      <section class="guide-band" aria-labelledby="guide-resume-title">
+        <div class="guide-heading"><i data-lucide="files"></i><div><span class="eyebrow">이어지는 작업</span><h3 id="guide-resume-title">내 이력서를 준비하고 회사 양식으로 옮기려면</h3></div></div>
+        <ol class="guide-flow">
+          <li><i data-lucide="file-pen-line"></i><span class="guide-step">01</span><h4>공통 이력서 작성</h4><p>Word 빈 양식을 받아 업로드하거나 화면에서 경력·기술·자격을 하나씩 추가합니다. 실제 경험인지 검수하고 반영하세요. Markdown·JSON도 가능합니다.</p><button type="button" class="text-button" data-guide-action="profile"><i data-lucide="arrow-right"></i>내 이력서 작성</button></li>
+          <li><i data-lucide="list-filter"></i><span class="guide-step">02</span><h4>이력서 정리</h4><p>공고 본문과 우선 키워드로 기존 경험의 배치 순서를 정리합니다. 공개 웹은 새로운 경력이나 성과를 만들어 넣지 않습니다.</p><button type="button" class="text-button" data-guide-action="resume"><i data-lucide="arrow-right"></i>정리 화면 열기</button></li>
+          <li><i data-lucide="panels-top-left"></i><span class="guide-step">03</span><h4>플랫폼 이력서 전환·저장</h4><p>캐치·잡코리아·사람인·원티드·인크루트 중 원하는 곳을 선택하세요. 검수한 정리 결과 또는 공통 원본을 각 플랫폼의 기존 이력서 항목으로 옮기고, 승인 후 저장합니다.</p><button type="button" class="text-button" data-guide-action="prepare"><i data-lucide="arrow-right"></i>플랫폼 선택하기</button></li>
+        </ol>
+        <p class="guide-detail">주 기능은 5개 채용 플랫폼의 기존 이력서 전환·저장입니다. 본인 PC 연결 도구를 한 번 설치한 뒤 전용 브라우저에서 로그인하면, 사이트가 허용하는 동안 해당 PC의 세션을 재사용합니다. 회사 자체 양식의 JSON 변환은 별도 고급 기능입니다.</p>
+      </section>
+      <section class="guide-band">
+        <div class="guide-heading"><i data-lucide="user-check"></i><div><h3>마지막 확인과 저장은 본인 계정으로</h3></div></div>
+        <p>변환 초안과 실제 사이트 저장은 다릅니다. 채용포털 저장은 본인 PC 연결 도구에서 직접 로그인·2차 인증을 마친 뒤, 연결 항목과 저장 동작을 검수하고 승인해야 합니다. 회사 자체 사이트는 현재 직접 입력·저장이 필요하며 지원서 제출은 자동으로 하지 않습니다.</p>
+        <div class="example-actions"><button type="button" class="text-button" data-guide-action="platforms"><i data-lucide="monitor-check"></i>로그인·사이트 저장 안내</button><button type="button" class="text-button" data-guide-action="examples"><i data-lucide="book-open"></i>단계별 사용 예시</button></div>
+        <p class="guide-detail">공개 웹의 입력과 현재 결과는 이 탭에서만 임시 보관합니다. 이전 결과 목록은 제공하지 않습니다. 필요한 이력서와 결과는 새로고침하거나 탭을 닫기 전에 다운로드하세요.</p>
+      </section>
+    </section>
+    <section class="view" id="platforms-view" hidden>
+      <div class="section-title"><h2>본인 브라우저에서 로그인·인증</h2><span id="device-status" class="tag" role="status">연결 전</span></div>
+      <label>저장할 플랫폼<select id="platform-site"></select></label><p id="platform-route"></p>
+      <p class="example-caution">비밀번호·인증번호·쿠키 파일은 받지 않습니다. 사이트 계정은 본인 PC의 전용 브라우저에 직접 로그인합니다. 일반 Chrome에서 이미 로그인했어도 전용 브라우저에서는 다시 로그인할 수 있습니다.</p>
+      <ol class="connection-steps">
+        <li><h3>내 PC에서 연결 도구 실행</h3><div id="device-setup"><button id="local-kit-download" class="text-button" type="button"><i data-lucide="download"></i>내 PC 연결 도구 다운로드</button><h4>Windows · 더블클릭으로 시작</h4><ol><li>PC에서 ZIP을 다운로드하고, 파일을 우클릭해 <strong>모두 압축 풀기</strong>를 선택합니다. 기존 작업 폴더가 아닌 새 폴더에 풀어 주세요.</li><li>압축을 푼 폴더의 <strong>Start-Resume-Connector.cmd</strong>를 더블클릭합니다. 명령어를 직접 입력할 필요는 없습니다. ZIP 안에서 실행하지 마세요.</li><li>uv가 없으면 설치 여부를 묻습니다. 진행하려면 <strong>Y</strong>를 누르고 설치 안내를 확인합니다. 첫 실행에는 인터넷이 필요하며 환경 준비에 몇 분 걸릴 수 있습니다.</li><li>준비가 끝나면 브라우저가 열립니다. 실행 창에 표시된 <strong>http://127.0.0.1:포트</strong> 주소를 아래에 입력하세요. 사용 중 실행 창을 유지하고 종료하려면 <strong>Ctrl+C</strong>를 누릅니다.</li></ol><p>EXE 설치 프로그램이 아닌 Windows 실행 스크립트입니다. WinGet이 없거나 조직 정책으로 설치가 막히면 아래 수동 안내 또는 관리자 도움을 이용하세요. 보안 경고를 우회하지 마세요. 운영자의 자료·키·로그인 정보는 포함하지 않습니다.</p><details id="device-manual"><summary>PowerShell / Linux / macOS에서 직접 실행하기</summary><p>Windows: 압축 폴더 빈 곳에서 Shift+우클릭 → 터미널에서 열기(PowerShell). 먼저 <code>winget install --id astral-sh.uv --exact</code>로 uv를 설치하고 터미널을 다시 여세요. 아래 명령을 한 줄씩 입력하고 Enter를 누릅니다.</p><pre id="device-command"></pre><button id="device-command-copy" class="icon-button" type="button" title="실행 명령 복사" aria-label="실행 명령 복사"><i data-lucide="copy"></i></button><p>Linux/macOS: <a href="https://docs.astral.sh/uv/getting-started/installation/" target="_blank" rel="noopener noreferrer">공식 uv 설치 안내</a>에 따라 설치하고 압축을 푼 폴더의 터미널에서 같은 명령을 실행합니다. 설치된 Chrome/Edge가 없으면 <code>uv run playwright install chromium</code>도 실행합니다. Linux 시스템 의존성 설치는 관리자 정책을 확인하세요.</p></details></div><p id="device-local" hidden>현재 이 PC의 로컬 작업 공간입니다. 별도 연결 없이 아래 로그인 단계로 진행하세요.</p></li>
+        <li id="device-connect-step"><h3>웹 이력서를 내 PC로 전달</h3><label>연결 도구 주소<input id="device-url" type="url" value="http://127.0.0.1:8780" autocomplete="off"></label><p>명령 실행 후 출력되는 실제 주소를 입력하세요. 이 주소는 웹 서비스 운영자 PC가 아니라 현재 브라우저를 사용하는 본인 PC를 가리킵니다.</p><label class="consent"><input type="checkbox" id="device-consent">현재 공통 이력서를 본인 PC로 전달하는 데 동의</label><button id="device-open" class="primary" type="button"><i data-lucide="monitor-up"></i>내 PC 연결 창 열기</button><p>새 로컬 창에서 요청 출처와 이력서를 확인하고 가져오기를 승인합니다. 전달 후 로컬 창에서 내용을 다시 검수·저장하세요. 로그인 세션은 웹 서비스로 전달하지 않습니다.</p></li>
+        <li><h3>사이트 로그인·2차 인증</h3><p>로컬 창의 로그인·편집 화면 열기로 띄운 전용 브라우저에서 로그인하세요. 문자·인증 앱·PASS·소셜 로그인·보안 문자는 해당 사이트에서 직접 완료합니다. 인증 후 기존 이력서의 수정 화면으로 이동하고 인증 팝업을 닫습니다.</p><button id="platform-start" class="text-button" type="button"><i data-lucide="external-link"></i>로컬 사이트 연결 화면으로 이동</button></li>
+        <li><h3>검수·저장·연결 종료</h3><p>인증·편집 상태 확인 → 현재 편집 화면 확인 → 항목 연결과 저장 동작 검수 → 선택 항목 입력·저장 순서입니다. 사이트 보안이나 필수 항목 때문에 실패하면 화면에서 직접 처리합니다. 저장 완료는 선택 항목의 재접속 확인 기준이며 지원서 제출은 하지 않습니다.</p><p>완료 후 전용 브라우저에서 로그아웃하고 닫으세요. 이력서·결과와 로그인 프로필은 본인 PC의 <code>result/</code>에 남을 수 있습니다. 공용 PC에서는 사용을 피하고 해당 로컬 파일도 직접 관리하세요.</p></li>
+      </ol>
+      <details><summary>휴대폰·연결 실패·회사 자체 사이트</summary><p>휴대폰만으로 PC용 Playwright 브라우저를 실행할 수는 없습니다. 본인 PC에서 위 연결을 진행하거나, 휴대폰에서 이력서를 다운로드해 사이트에 수동으로 반영하세요. 운영자의 노트북 로그인 세션을 대신 쓰지는 않습니다.</p><p>연결이 안 되면 본인 PC의 도구 실행 여부·포트·팝업 차단·명령의 허용 웹 주소를 확인하세요. HTTPS나 사이트 보안 경고를 무시하지 마세요. 연결이 제한되는 브라우저에서는 표준 이력서를 다운로드해 로컬 화면에 업로드하는 방법을 사용하세요.</p><p>회사 자체 채용 사이트는 회사 양식 변환을 사용할 수 있습니다. 로그인·2차 인증과 최종 입력/저장은 현재 수동입니다. 사이트별 인증 우회나 세션 파일 수동 업로드는 제공하지 않습니다.</p></details>
+    </section>
+    <section class="view" id="examples-view" hidden>
+      <div class="example-heading"><p>아래 내용은 가상 예시입니다. 예시를 넣어도 공통 이력서나 사이트에 자동 저장되지 않습니다.</p><span class="tag">가상 예시</span></div>
+      <div class="example-tabs" role="tablist" aria-label="서비스별 사용 예시">
+        <button role="tab" id="example-tab-profile" data-example="profile" aria-controls="example-profile" aria-selected="false">공통 이력서</button><button role="tab" id="example-tab-search" data-example="search" aria-controls="example-search" aria-selected="true">공고 탐색</button><button role="tab" id="example-tab-resume" data-example="resume" aria-controls="example-resume" aria-selected="false">이력서 정리</button><button role="tab" id="example-tab-prepare" data-example="prepare" aria-controls="example-prepare" aria-selected="false">플랫폼 전환</button><button role="tab" id="example-tab-platforms" data-example="platforms" aria-controls="example-platforms" aria-selected="false">플랫폼 연결</button><button role="tab" id="example-tab-sync" data-example="sync" aria-controls="example-sync" aria-selected="false">사이트 저장</button>
+      </div>
+      <article class="example-topic" id="example-profile" role="tabpanel" aria-labelledby="example-tab-profile" tabindex="0" hidden>
+        <h2>한 번 등록하고 같은 이력서 사용하기</h2>
+        <ol><li><strong>공통 이력서</strong>를 열고 Word 기본 양식을 받습니다. Markdown·JSON도 선택할 수 있습니다.</li><li>표의 항목명을 유지하고 본인의 사실만 작성한 뒤 <strong>표준 이력서 업로드</strong>로 가져옵니다. 여러 경력은 제목과 표를 함께 복사합니다.</li><li>화면에서는 <strong>경력 추가·기술 추가·자격증 추가</strong>로 각각 등록합니다. 재직 중이면 종료일 없이 <strong>재직 중</strong>을 선택합니다.</li><li>일반 DOCX는 원문을 소개 칸에 보존합니다. 자동 추측으로 나누지 않으므로 세부 항목에 직접 옮겨 검수합니다.</li><li>반영 후 <strong>원문·사실 검수 완료</strong>를 선택해 다시 반영합니다. <strong>이력서 정리</strong>의 결과를 확인하고 <strong>정리 결과로 플랫폼 전환</strong>으로 이어갑니다.</li></ol>
+        <div class="example-preview"><h3>작성 항목 예시</h3><dl><dt>소개</dt><dd>[가상 예시] 제품 데이터를 분석하고 정기 보고서를 작성한 경험</dd><dt>기술</dt><dd>[가상 예시] Python, SQL</dd><dt>검수</dt><dd>실제 경험과 일치하는 항목만 승인</dd></dl></div>
+        <p class="example-caution">작성 내용을 수정하면 검수가 해제됩니다. 아래 예시는 내 경력으로 등록하지 마세요.</p>
+        <div class="example-actions"><button class="text-button" data-example-action="template"><i data-lucide="file-down"></i>빈 표준 양식 받기</button><button class="primary" data-example-action="profile"><i data-lucide="file-pen-line"></i>내 이력서 열기</button></div>
+      </article>
+      <article class="example-topic" id="example-search" role="tabpanel" aria-labelledby="example-tab-search" tabindex="0">
+        <h2>공고 두 개로 탐색 흐름 확인하기</h2>
+        <ol><li><strong>예시 공고 넣기</strong>를 눌러 가상 공고 두 개를 검색 화면에 넣습니다.</li><li>키워드는 <strong>Python, SQL</strong>로 설정됩니다. 필요하면 제외 키워드를 추가합니다.</li><li><strong>공고 탐색</strong>을 눌러 결과와 원문 링크를 확인합니다.</li></ol>
+        <div class="example-preview"><h3>예상 결과</h3><div class="example-table"><table><thead><tr><th>가상 공고</th><th>일치 키워드</th></tr></thead><tbody><tr><td>데이터 분석가</td><td>Python, SQL</td></tr><tr><td>운영 담당자</td><td>없음</td></tr></tbody></table></div></div>
+        <p class="example-caution">실제 채용정보나 합격 가능성이 아닙니다. 실제 공고의 마감·자격은 원문에서 확인하세요.</p>
+        <div class="example-actions"><button class="primary" data-example-action="search"><i data-lucide="flask-conical"></i>예시 공고 넣기</button></div>
+      </article>
+      <article class="example-topic" id="example-resume" role="tabpanel" aria-labelledby="example-tab-resume" tabindex="0" hidden>
+        <h2>내 경험을 지원 직무에 맞춰 정리하기</h2>
+        <ol><li>공통 이력서의 실제 경험을 먼저 등록·검수합니다.</li><li>지원 공고의 본문을 <strong>채용 공고 / JD</strong>에 넣고 우선 키워드를 정합니다.</li><li><strong>이력서 정리</strong>를 실행한 뒤 결과를 원문과 대조합니다.</li></ol>
+        <div class="example-preview"><h3>가상 JD</h3><blockquote>Python과 SQL로 제품 데이터를 분석하고 정기 보고서를 작성하는 데이터 분석가를 찾습니다.</blockquote><h3>확인할 내용</h3><p>관련 경험이 먼저 배치됐는지, 원문에 없는 회사·기간·성과가 추가되지 않았는지 확인합니다. 검수되지 않은 이력서로는 실행할 수 없습니다.</p></div>
+        <div class="example-actions"><button class="primary" data-example-action="resume"><i data-lucide="file-text"></i>가상 JD 넣기</button></div>
+      </article>
+      <article class="example-topic" id="example-prepare" role="tabpanel" aria-labelledby="example-tab-prepare" tabindex="0" hidden>
+        <h2>원하는 채용 플랫폼에 이력서 옮기고 저장하기</h2>
+        <ol><li>공통 이력서 또는 검수한 정리 결과를 선택합니다.</li><li>5개 플랫폼 중 원하는 곳을 체크하고 연결 동의 후 진행합니다.</li><li>첫 사용은 본인 PC 연결 도구를 설치합니다. 웹에서 전달한 이력서와 선택한 플랫폼은 로컬 창에서 승인합니다.</li><li>전용 브라우저에서 로그인·2차 인증하고 기존 이력서 편집 화면을 엽니다. 세션이 남아 있으면 다시 로그인하지 않아도 됩니다.</li><li>사이트별 검수·저장을 눌러 제안된 항목 연결과 저장 동작을 확인한 뒤 승인합니다. 재접속 확인 결과를 각 사이트 행에서 확인합니다.</li></ol>
+        <p class="example-caution">로그인 세션을 웹에 업로드하거나 기존 개인 Chrome의 쿠키를 추출하지 않습니다. 아래 JSON 파일은 회사 자체 사이트용 고급 변환에서만 필요합니다.</p>
+        <h3>회사 자체 사이트의 고급 변환</h3>
+        <ol><li>검수된 공통 이력서와 운영자가 준비한 회사 양식 파일을 확인합니다.</li><li><strong>회사 target JSON</strong>과 <strong>폼 스냅샷 JSON</strong>을 업로드합니다. 항목을 연결한 bindings 파일이 있으면 함께 넣습니다.</li><li><strong>양식 변환</strong>을 눌러 연결된 항목·미작성 항목·길이 제한을 확인합니다.</li></ol>
+        <div class="example-preview"><h3>연결 예시</h3><dl><dt>공통 경력 기술</dt><dd>회사 양식의 주요 경력 칸</dd><dt>미연결 필수 항목</dt><dd>사용자 확인 필요로 남음</dd><dt>글자수 초과</dt><dd>자동 절단하지 않고 검토 필요</dd></dl></div>
+        <p class="example-caution">변환 결과는 저장 완료가 아닙니다. 회사 자체 사이트의 파일 준비와 실제 저장은 별도 작업이며 지원서는 제출하지 않습니다.</p>
+        <div class="example-actions"><button class="primary" data-example-action="prepare"><i data-lucide="panels-top-left"></i>회사 양식 열기</button></div>
+      </article>
+      <article class="example-topic" id="example-platforms" role="tabpanel" aria-labelledby="example-tab-platforms" tabindex="0" hidden>
+        <h3>공개 웹에서 본인 PC로 연결</h3>
+        <ol><li>PC에서 연결 도구 ZIP을 다운로드하고 우클릭 → 모두 압축 풀기로 새 폴더에 풉니다.</li><li>Windows는 Start-Resume-Connector.cmd를 더블클릭합니다. uv 설치 질문이 나오면 직접 선택하세요. PowerShell/Linux/macOS 수동 실행 안내는 플랫폼 연결의 접힌 안내에 있습니다.</li><li>실행 창의 로컬 주소를 입력하고 이력서 전달에 동의한 뒤 내 PC 연결 창을 엽니다. 사용 중 실행 창을 닫지 마세요.</li><li>로컬 창에서 출처·이력서를 확인하고 가져오기를 승인합니다. 다시 검수한 뒤 전용 브라우저에서 로그인·2차 인증을 직접 완료합니다. 비밀번호·쿠키를 웹에 올리지 않습니다.</li></ol>
+        <p class="example-caution">아래 사진은 가상 이력서의 실제 전달 과정입니다. 휴대폰만으로 무설치 자동 저장을 제공하지 않습니다.</p>
+        <button class="text-button" data-example-action="platforms"><i data-lucide="monitor-check"></i>플랫폼 연결 열기</button>
+      </article>
+      <article class="example-topic" id="example-sync" role="tabpanel" aria-labelledby="example-tab-sync" tabindex="0" hidden>
+        <p>외부 웹에서는 먼저 플랫폼 연결에서 본인 PC의 연결 도구를 실행하세요. 로그인·2차 인증은 그 PC의 전용 사이트 브라우저에서 직접 완료합니다. 운영자 노트북의 로그인 세션은 사용하지 않습니다.</p><button class="text-button" data-example-action="platforms"><i data-lucide="monitor-check"></i>플랫폼 연결 안내 열기</button>
+        <h2>기존 채용사이트 이력서의 선택 항목 저장하기</h2>
+        <ol><li><strong>회사 양식 변환</strong>의 사이트 업데이트·저장에서 대상 사이트를 선택합니다.</li><li><strong>로그인·편집 화면 열기</strong>를 누르고 본인 PC의 전용 브라우저에서 로그인한 뒤 기존 이력서 수정 화면으로 이동합니다.</li><li><strong>현재 편집 화면 확인</strong>으로 항목을 수집하고, 전송할 내용과 목적지·저장 동작을 검수합니다.</li><li>입력·저장 동의 후 <strong>선택 항목 입력·저장</strong>을 실행합니다. 재접속해 선택 값이 유지될 때 저장 확인 완료입니다.</li></ol>
+        <div class="example-preview"><h3>결과 구분</h3><dl><dt>저장 확인 완료</dt><dd>선택한 값의 재접속 확인 성공</dd><dt>저장 확인 필요</dt><dd>사이트 화면에서 직접 확인하고 불확실한 저장을 반복하지 않기</dd></dl></div>
+        <p class="example-caution">휴대폰만으로 자동 저장할 수는 없습니다. 본인 PC 연결이 필요합니다. 계정 인증은 직접 해야 하며 공개 설정·동의·지원서 제출은 자동 조작하지 않습니다.</p>
+        <div class="example-actions"><button class="primary" data-example-action="sync"><i data-lucide="cloud-upload"></i>사이트 저장 화면 열기</button></div>
+      </article>
+    </section>
+    <details id="profile-panel"><summary>공통 이력서 <span id="profile-status">불러오는 중</span></summary>
+      <div class="section-title"><h2>표준 이력서</h2><div class="output-actions"><label class="format-picker">파일 형식<select id="profile-format"><option value="docx">Word (.docx)</option><option value="md">Markdown (.md)</option><option value="json">JSON (.json)</option></select></label><button id="template-download" class="text-button" title="빈 표준 이력서 다운로드"><i data-lucide="file-down"></i>빈 양식</button><label class="file-button"><i data-lucide="upload"></i>표준 이력서 업로드<input type="file" id="profile-file" accept=".docx,.md,.json" hidden></label><button id="profile-download" class="icon-button" title="작성한 표준 이력서 다운로드" aria-label="표준 이력서 다운로드"><i data-lucide="download"></i></button></div></div>
+      <div class="source-line"><label>DOCX를 넣을 항목<select id="docx-field"></select></label><label class="file-button"><i data-lucide="upload"></i>DOCX 불러오기<input type="file" id="docx" accept=".docx" hidden></label></div>
+      <form id="profile-form"><div id="profile-fields"></div><div class="action-row"><span id="profile-feedback"></span><button class="primary" type="submit"><i data-lucide="save"></i>공통 이력서 저장</button></div></form>
+    </details>
+    <section class="model-bar operator-only" aria-label="모델 설정" hidden><label>처리 모드<select id="provider"><option value="none">기본 · LLM 없음</option></select></label><label id="model-label" hidden>모델 ID<input id="model" autocomplete="off" list="available-models"><datalist id="available-models"></datalist></label><div class="key-status" id="key-status">상태 확인 중</div><label class="consent" id="ai-consent-label" hidden><input type="checkbox" id="ai-consent">입력 자료의 AI 전송에 동의</label></section>
+    <section class="view" id="connection-view" hidden><form id="connection-form">
+      <div class="section-title"><h2>자체 LLM 연결</h2><span class="tag">OpenAI 호환 API</span></div>
+      <div class="form-grid"><label>서버 유형<select id="connection-preset"><option value="custom">사용자 지정</option><option value="ollama">Ollama</option><option value="lmstudio">LM Studio</option><option value="vllm">vLLM / llama.cpp</option></select></label><label>API 기본 주소<input id="connection-url" type="url" required placeholder="http://127.0.0.1:11434/v1"></label><label>모델 ID / 서버 모델 경로<input id="connection-model" required list="available-models" placeholder="서버에 등록된 모델 ID"></label><label>API 키 · 선택<input id="connection-key" type="password" autocomplete="off"></label></div>
+      <label class="consent"><input type="checkbox" id="connection-consent" required>이 API 주소에 연결하고, 실행 시 선택한 자료를 전송하는 데 동의</label>
+      <div class="action-row"><span id="connection-status">연결 없음</span><div class="output-actions"><button class="text-button" type="button" id="model-list"><i data-lucide="refresh-cw"></i>모델 목록</button><button class="primary" type="submit"><i data-lucide="plug"></i>연결 적용</button></div></div>
+    </form></section>
+    <section class="view" id="search-view" hidden>
+      <form id="search-form">
+        <div class="section-title"><h2>검색 조건</h2><button type="button" id="sample" class="text-button"><i data-lucide="flask-conical"></i>예시 공고</button></div>
+        <div class="form-grid"><label>직무<input name="role" placeholder="데이터 분석가"></label><label>지역<input name="location" placeholder="서울, 경기"></label><label class="wide">기술·업무 키워드<input name="keywords" placeholder="Python, SQL, 데이터 분석"></label><label class="wide">제외 키워드<input name="exclude" placeholder="라벨링, 단순입력"></label></div>
+        <div class="source-line"><label>공고 출처<select name="source" id="source"><option value="manual">직접 입력 · API 없음</option></select></label><label class="consent" id="search-consent-label" hidden><input type="checkbox" name="search_consent">검색어 전송에 동의</label></div>
+        <fieldset id="site-list" hidden><legend>검색 사이트</legend><label><input type="checkbox" name="sites" value="catch" checked>캐치</label><label><input type="checkbox" name="sites" value="jobkorea" checked>잡코리아</label><label><input type="checkbox" name="sites" value="saramin" checked>사람인</label><label><input type="checkbox" name="sites" value="wanted" checked>원티드</label><label><input type="checkbox" name="sites" value="incruit" checked>인크루트</label></fieldset>
+        <label id="postings-label">공고 JSON<textarea name="postings" rows="7" placeholder='[{"title":"공고 제목","url":"https://...","content":"공고 원문"}]'></textarea></label>
+        <div class="action-row"><span>공공기관 제외 · 마감 상태는 원문 확인</span><button class="primary" type="submit"><i data-lucide="search"></i>공고 탐색</button></div>
+      </form>
+    </section>
+    <section class="view" id="resume-view" hidden><form id="resume-form"><div class="section-title"><h2>공통 이력서 맞춤 정리</h2></div><div class="form-grid"><label class="wide">채용 공고 / JD<textarea name="jd" rows="5" placeholder="지원할 직무의 공고 원문"></textarea></label><label class="wide">우선 키워드<input name="keywords" placeholder="SQL, Python, 실험 분석"></label></div><div class="action-row"><span>지원 직무에 맞춰 이력서 정리</span><button class="primary" type="submit"><i data-lucide="file-pen-line"></i>이력서 정리</button></div></form></section>
+    <section class="view" id="prepare-view" hidden><div class="section-title"><h2>채용 플랫폼 이력서 전환·저장</h2></div><p>공통 이력서를 선택한 플랫폼의 기존 이력서로 옮깁니다. 로그인 세션은 본인 PC에만 유지하며, 사이트의 로그인·2차 인증은 직접 완료합니다. 새 경력 행 생성·파일 첨부·지원서 제출은 아직 자동화하지 않습니다.</p><div class="portal-source"><label>변환할 이력서<select id="conversion-source"><option value="profile">검수된 공통 이력서</option><option value="organized" disabled>검수한 정리 결과</option></select></label></div><fieldset id="portal-sites"><legend>저장할 플랫폼 · 여러 곳 선택 가능</legend><label><input type="checkbox" value="catch">캐치</label><label><input type="checkbox" value="jobkorea">잡코리아</label><label><input type="checkbox" value="saramin">사람인</label><label><input type="checkbox" value="wanted">원티드</label><label><input type="checkbox" value="incruit">인크루트</label></fieldset><label class="consent"><input type="checkbox" id="portal-consent">선택한 이력서를 본인 PC에서 사용하고 선택한 사이트의 연결·로그인 창을 여는 데 동의</label><div class="action-row"><button id="portal-setup" class="text-button" type="button"><i data-lucide="monitor-down"></i>처음 연결·설치 안내</button><button id="portal-proceed" class="primary" type="button"><i data-lucide="arrow-right"></i>선택한 플랫폼으로 진행</button></div><p id="portal-status" role="status"></p><div id="portal-queue" aria-live="polite"></div><section id="sync-panel" hidden>
+      <form id="sync-form">
+        <div class="section-title"><h2>사이트 업데이트·저장</h2><span class="tag operator-only">LLM 없음</span></div>
+        <div class="source-line"><label>대상 사이트<select id="sync-site"><option value="catch">캐치</option><option value="jobkorea">잡코리아</option><option value="saramin">사람인</option><option value="wanted">원티드</option><option value="incruit">인크루트</option></select></label><button type="button" id="sync-open" class="text-button"><i data-lucide="external-link"></i>로그인·편집 화면 열기</button><button type="button" id="sync-close" class="icon-button" title="사이트 브라우저 닫기" aria-label="사이트 브라우저 닫기"><i data-lucide="x"></i></button></div>
+        <button type="button" id="sync-capture" class="text-button"><i data-lucide="scan-text"></i>현재 편집 화면 확인</button>
+        <button type="button" id="sync-status" class="text-button"><i data-lucide="shield-check"></i>인증·편집 상태 확인</button><p id="sync-auth-status" role="status">전용 브라우저에서 로그인·2차 인증을 직접 완료하세요.</p>
+        <p id="sync-url"></p><div id="sync-fields"></div>
+        <label>저장 동작<select id="sync-save"><option value="">편집 화면 확인 필요</option></select></label>
+        <label class="consent"><input type="checkbox" id="sync-consent">선택 항목과 저장 동작을 검수했으며 사이트 전송·저장에 동의</label>
+        <div class="action-row"><span>저장 확인은 선택 항목만 · 지원서 제출 미실행</span><button class="primary" type="submit" id="sync-apply" disabled><i data-lucide="cloud-upload"></i>선택 항목 입력·저장</button></div>
+        <pre id="sync-result" hidden></pre>
+      </form>
+    </section>
+<details id="company-advanced"><summary>회사 자체 채용사이트 양식 · 고급 변환</summary><form id="prepare-form"><div class="section-title"><h2>공통 이력서 → 회사 자체 양식</h2><span class="tag operator-only">LLM 없음</span></div><div class="form-grid"><label>회사 target JSON<input type="file" name="target" accept=".json" required></label><label>폼 스냅샷 JSON<input type="file" name="form_map" accept=".json" required></label><label>검수 bindings JSON · 선택<input type="file" name="bindings" accept=".json"></label></div><div class="action-row"><span>변환 초안 · 브라우저 입력·저장·지원 미실행</span><button class="primary" type="submit"><i data-lucide="workflow"></i>양식 변환</button></div></form></details></section>
+    <section id="output" class="output" aria-live="polite"><div class="section-title"><h2>결과</h2><div class="output-actions"><span class="tag" id="result-status">대기</span><button id="download" class="icon-button" title="JSON 내려받기" aria-label="JSON 내려받기" disabled><i data-lucide="download"></i></button></div></div><div id="empty" class="empty"><i data-lucide="inbox"></i><h3>아직 실행 결과가 없습니다</h3><p>작업을 실행하면 여기에 현재 결과가 표시됩니다.</p></div><div id="result-body" hidden><div id="metrics" class="metrics"></div><div id="jobs"></div><div class="result-tabs" role="tablist"><button class="selected" role="tab" aria-selected="true" data-result="baseline">기본 결과</button><button role="tab" aria-selected="false" data-result="ai" id="ai-tab" disabled>AI 결과</button><button role="tab" aria-selected="false" data-result="json">JSON</button><button class="icon-button" id="copy" title="결과 복사" aria-label="결과 복사"><i data-lucide="copy"></i></button></div><p id="review-note">검수 필요 · 결과는 로컬에 저장됨</p><pre id="report"></pre></div></section>
+  </div>
+  <footer class="privacy-footer">
+    <div class="footer-heading"><strong>Resume Workspace</strong><button id="visitor-clear" class="text-button" type="button" hidden><i data-lucide="trash-2"></i>임시 데이터 삭제</button></div>
+    <p id="privacy-summary">개인정보는 요청한 작업의 처리에만 사용합니다. 자세한 보관·삭제 방식은 아래 안내를 확인하세요.</p>
+    <details id="privacy-policy"><summary>개인정보 처리 안내</summary>
+      <p>처리 목적: 사용자가 요청한 공고 정리, 이력서 정리와 회사 양식 변환. 처리 항목: 직접 입력하거나 업로드한 이력서·경력·근거 자료, 공고·JD, 생성 결과.</p>
+      <p id="privacy-storage">보관 방식은 현재 접속한 작업 공간의 설정에 따라 달라집니다.</p>
+      <p id="privacy-browser">다운로드한 파일은 사용자 기기에 저장됩니다. 공용 기기에서는 다운로드와 클립보드를 직접 관리하세요.</p>
+      <p id="privacy-network">외부 접속은 HTTPS로 Cloudflare를 경유합니다. IP·접속 정보 등의 네트워크 처리는 <a href="https://www.cloudflare.com/privacypolicy/" target="_blank" rel="noopener noreferrer">Cloudflare 개인정보 정책</a>도 적용됩니다. 서버에서 처리하므로 사용자 기기 안에서만 실행되는 서비스는 아닙니다.</p>
+      <p>주민등록번호, 계정 비밀번호, 건강 정보 등 불필요한 민감 정보를 입력하지 마세요. 이 안내는 현재 구현의 설명이며 법적 준수 인증을 의미하지 않습니다.</p>
+      <p id="privacy-contact">운영자 문의처: 미등록</p>
+    </details>
+  </footer>
+</main>
+</body></html>

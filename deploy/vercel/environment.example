@@ -1,0 +1,4 @@
+# Public deployment needs no model keys, database keys, or private .env.
+# Optional public contact is supplied at export time, not a runtime secret.
+# python -m job_agent.hosting.build --privacy-contact contact@example.com
+# Keep OPENAI_API_KEY / GOOGLE_API_KEY / TAVILY_API_KEY unset on Vercel.

@@ -1,0 +1,53 @@
+name: Resume Public Export
+
+# Install this template at the parent Git repository's
+# .github/workflows/resume-public.yml after reviewing it.
+on:
+  workflow_dispatch:
+    inputs:
+      production:
+        description: Publish to the production domain
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Export code only (no private environment)
+        working-directory: resum
+        run: python -m job_agent.hosting.build --output "$RUNNER_TEMP/resume-public"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: resume-public-code-only
+          path: ${{ runner.temp }}/resume-public
+          include-hidden-files: true
+          retention-days: 3
+      - uses: actions/setup-node@v4
+        if: env.VERCEL_TOKEN != '' && env.VERCEL_ORG_ID != '' && env.VERCEL_PROJECT_ID != ''
+        with:
+          node-version: '22'
+      - name: Install deployment CLI
+        if: env.VERCEL_TOKEN != '' && env.VERCEL_ORG_ID != '' && env.VERCEL_PROJECT_ID != ''
+        run: npm install --global vercel@63.1.0
+      - name: Deploy only when credentials are configured
+        if: env.VERCEL_TOKEN != '' && env.VERCEL_ORG_ID != '' && env.VERCEL_PROJECT_ID != ''
+        shell: bash
+        env:
+          PRODUCTION: ${{ inputs.production }}
+        run: |
+          args=()
+          if [ "$PRODUCTION" = "true" ]; then args+=(--prod); fi
+          vercel deploy "$RUNNER_TEMP/resume-public" --yes --token "$VERCEL_TOKEN" "${args[@]}"

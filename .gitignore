@@ -32,6 +32,8 @@ resume.pdf
 
 # 생성 결과물 및 개인정보 무시 (커밋 금지)
 result/
+.vercel/
+.env.*
 self_introduction/
 
 # 개인 자료 폴더는 전체 무시하되, 공개 샘플은 예외로 추적 허용

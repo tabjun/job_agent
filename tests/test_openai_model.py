@@ -42,6 +42,18 @@ class ModelConfigurationTests(unittest.TestCase):
             self.assertEqual(gemini.call_args.kwargs["model"], "gemini-fixture")
             self.assertEqual(openai.call_count, 1)
 
+    def test_request_scoped_model_and_retry_policy_do_not_change_environment(self):
+        with (
+            patch.dict(os.environ, {"OPENAI_MODEL": "configured-default"}),
+            patch("job_agent.core.engine.ChatOpenAI") as client,
+        ):
+            LangGraphAgentEngine(
+                use_model="gpt", model_name="ui-selected", max_retries=0
+            )
+            self.assertEqual(client.call_args.kwargs["model"], "ui-selected")
+            self.assertEqual(client.call_args.kwargs["max_retries"], 0)
+            self.assertEqual(os.environ["OPENAI_MODEL"], "configured-default")
+
 
 class ResponsesRoundTripTests(unittest.IsolatedAsyncioTestCase):
     async def test_real_sdk_serialization_tool_round_trip_and_text_contract(self):
@@ -116,12 +128,12 @@ class ResponsesRoundTripTests(unittest.IsolatedAsyncioTestCase):
             async with httpx.AsyncClient(transport=transport) as async_client:
 
                 def create_model(**options):
+                    options["max_retries"] = 0
                     return ChatOpenAI(
                         api_key="test-only-not-a-secret",
                         base_url="https://fixture.invalid/v1",
                         http_client=sync_client,
                         http_async_client=async_client,
-                        max_retries=0,
                         **options,
                     )
 

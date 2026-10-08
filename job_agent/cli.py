@@ -16,6 +16,7 @@ class Command:
 
 
 COMMANDS = {
+    "ui": Command("job_agent.ui.server", "main"),
     "target-register": Command("job_agent.sites.registry", "main"),
     "application-prepare": Command("job_agent.sites.application", "main"),
     "source": Command("job_agent.documents.source", "main"),

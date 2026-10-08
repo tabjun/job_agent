@@ -44,6 +44,8 @@ class LangGraphAgentEngine:
         use_model: str = "gemini",
         tools: List[Any] = None,
         system_prompt: str = "",
+        model_name: str = None,
+        max_retries: int = 2,
     ):
         """
         엔진 초기화 시 사용할 모델 타입, 도구 목록, 그리고 에이전트의 페르소나(System Prompt)를 설정합니다.
@@ -53,7 +55,7 @@ class LangGraphAgentEngine:
 
         # 모델 선택 로직: 설정에 따라 GPT 또는 Gemini 모델을 초기화하고 도구를 바인딩합니다.
         if use_model == "gpt":
-            openai_model = os.getenv("OPENAI_MODEL", "gpt-6-luna")
+            openai_model = model_name or os.getenv("OPENAI_MODEL", "gpt-6-luna")
             print(f"[System] OpenAI({openai_model})를 사용합니다. (API 사용량 과금)")
             # Preserve reasoning blocks so the next tool turn can replay them.
             self.llm = ChatOpenAI(
@@ -63,16 +65,17 @@ class LangGraphAgentEngine:
                 output_version="responses/v1",
                 store=False,
                 include=["reasoning.encrypted_content"],
+                max_retries=max_retries,
             ).bind_tools(self.tools)
         else:
             # gemini-1.5-pro는 2025-09-24부로 서비스 종료되어 호출 시 에러를 반환한다.
             # 현행 무료/저가 모델인 gemini-2.0-flash로 교체한다. (env GEMINI_MODEL로 재정의 가능)
-            gemini_model = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
+            gemini_model = model_name or os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
             print(
                 f"[System] Gemini({gemini_model})를 사용합니다. (계정별 할당량/과금 확인)"
             )
             self.llm = ChatGoogleGenerativeAI(
-                model=gemini_model, temperature=0
+                model=gemini_model, temperature=0, max_retries=max_retries
             ).bind_tools(self.tools)
 
         # 도구 실행 시 이름으로 빠르게 조회하기 위해 딕셔너리로 관리합니다.
