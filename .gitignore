@@ -1,3 +1,18 @@
+# 2026-10-15: personal_ai_project 모노레포의 루트 .gitignore에서 이 저장소(옛 resum/)에 해당하던 규칙을
+# 옮겨 왔다. 분리 후에는 상위 규칙이 적용되지 않아 원본 이력서·지원서(pdf/hwp/xls)가 추적될 수 있다.
+# 옛 구조에서 하위(이 파일) 규칙이 상위보다 우선했으므로, 같은 결과가 되도록 이 블록을 맨 앞에 둔다.
+**/.vscode/*
+self_introduction
+more_info/*
+!more_info/guideline.txt
+!knowledge/resume_example.md
+*.pdf
+*.hwp
+*.docs
+*.xls*
+*.jpeg
+# --- 여기까지 이관 블록 ---
+
 # .gitignore (루트용)
 
 # 가상환경 폴더 무시
