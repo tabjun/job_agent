@@ -145,6 +145,43 @@ class RemoteHttpTests(test_ui.HttpTests):
         self.server.sharing.stop()
         self.assertFalse(self.server.sharing.authenticated(auth["Cookie"]))
 
+    def test_shared_visitor_cannot_drive_portal_sessions(self):
+        headers = self.remote_headers()
+        with self.request(
+            "/api/login", {"code": self.server.sharing.code}, **headers
+        ) as response:
+            cookie = response.headers["Set-Cookie"].split(";")[0]
+        auth = {**headers, "Cookie": cookie, "X-Session-Token": self.server.token}
+        with patch.object(self.server.service, "sync") as sync:
+            for operation in ["open", "status", "capture", "apply", "close_site"]:
+                for extra in [{}, {"X-Admin-Token": self.server.admin_token}]:
+                    with self.assertRaises(HTTPError) as error:
+                        self.request(
+                            "/api/sync",
+                            {"operation": operation, "site": "wanted", "consent": True},
+                            **auth,
+                            **extra,
+                        )
+                    self.assertEqual(error.exception.code, 403)
+            with self.assertRaises(HTTPError) as error:
+                self.request(
+                    "/api/sync",
+                    {"operation": "status", "site": "wanted"},
+                    **{"X-Session-Token": self.server.token},
+                )
+            self.assertEqual(error.exception.code, 403)
+            sync.assert_not_called()
+            sync.return_value = {"ok": True}
+            with self.request(
+                "/api/sync",
+                {"operation": "status", "site": "wanted"},
+                **{
+                    "X-Session-Token": self.server.token,
+                    "X-Admin-Token": self.server.admin_token,
+                },
+            ) as response:
+                self.assertTrue(json.load(response)["ok"])
+
     def test_forwarded_local_host_cannot_bypass_remote_login(self):
         self.remote_headers()
         with self.assertRaises(HTTPError):

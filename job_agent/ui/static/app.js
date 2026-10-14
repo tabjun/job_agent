@@ -1,6 +1,6 @@
 "use strict";
 const $ = (selector) => document.querySelector(selector);
-const titles = {guide: "처음 사용하기", search: "공고 탐색", resume: "이력서 정리", prepare: "플랫폼 이력서 전환·저장", connection: "자체 LLM 연결", examples: "사용 예시", platforms: "플랫폼 연결"};
+const titles = {guide: "처음 사용하기", search: "공고 탐색", resume: "이력서 정리", prepare: "플랫폼 이력서 전환·저장", connection: "자체 LLM 연결", examples: "사용 예시", platforms: "플랫폼 연결", alerts: "공고 알림"};
 let config, currentRun, currentResult = "baseline", view = "guide", working = false;
 let profile, profileDirty = false;
 let organizedProfile = null;
@@ -23,9 +23,9 @@ $("#use-organized").addEventListener("click", () => {
   $("#conversion-source option[value=organized]").disabled = false; $("#conversion-source").value = "organized";
   switchView("prepare");
 });
-for (const [key, icon] of [["connection", "plug"], ["platforms", "monitor-check"], ["examples", "book-open"]]) {
+for (const [key, icon] of [["alerts", "bell-ring"], ["connection", "plug"], ["platforms", "monitor-check"], ["examples", "book-open"]]) {
   const button = document.createElement("button"); button.className = "nav"; button.dataset.view = key;
-  if (key === "connection") button.classList.add("operator-only");
+  if (key === "connection" || key === "alerts") button.classList.add("operator-only");
   const symbol = document.createElement("i"); symbol.dataset.lucide = icon;
   button.append(symbol, document.createTextNode(titles[key])); $("nav").append(button);
 }
@@ -52,18 +52,24 @@ function modelChanged(reset = true) {
 
 function switchView(next) {
   if (working) return;
-  view = Object.hasOwn(titles, next) && (next !== "connection" || config?.local_owner) ? next : "guide";
+  view = Object.hasOwn(titles, next) && (!["connection", "alerts"].includes(next) || config?.local_owner) ? next : "guide";
   document.querySelectorAll(".view").forEach(node => { node.hidden = node.id !== `${view}-view`; });
-  document.querySelectorAll(".nav").forEach(node => node.classList.toggle("active", node.dataset.view === view));
+  document.querySelectorAll(".nav").forEach(node => {
+    const active = node.dataset.view === view;
+    node.classList.toggle("active", active);
+    if (active) node.setAttribute("aria-current", "page");
+    else node.removeAttribute("aria-current");
+  });
   $("#page-title").textContent = titles[view];
   $("#breadcrumb").textContent = `작업 공간 / ${titles[view]}`;
-  $(".model-bar").hidden = !config?.local_owner || ["guide", "prepare", "connection", "examples", "platforms"].includes(view);
-  $("#profile-panel").hidden = ["guide", "search", "connection", "examples", "platforms"].includes(view);
-  $("#output").hidden = ["guide", "connection", "examples", "platforms"].includes(view);
-  $("#sync-panel").hidden = view !== "prepare" || (config?.public_demo && !config.local_owner);
-  $("#examples-help").hidden = ["guide", "examples", "connection"].includes(view);
+  $(".model-bar").hidden = !config?.local_owner || ["guide", "prepare", "connection", "examples", "platforms", "alerts"].includes(view);
+  $("#profile-panel").hidden = ["guide", "search", "connection", "examples", "platforms", "alerts"].includes(view);
+  $("#output").hidden = ["guide", "connection", "examples", "platforms", "alerts"].includes(view);
+  $("#sync-panel").hidden = view !== "prepare" || !config?.local_owner;
+  $("#examples-help").hidden = ["guide", "examples", "connection", "alerts"].includes(view);
   window.history.replaceState(null, "", view === "examples" ? `#examples/${exampleTopic}` : `#${view}`);
   notice("");
+  window.dispatchEvent(new CustomEvent("view-changed", {detail: view}));
 }
 
 function showExample(topic) {
@@ -470,6 +476,7 @@ async function initialize() {
     $(".local-badge").lastChild.textContent = config.local_owner ? "LOCAL" : "REMOTE";
     $("#connection-form").hidden = !config.local_owner;
     $(".nav[data-view=connection]").hidden = !config.local_owner;
+    $(".nav[data-view=alerts]").hidden = !config.local_owner;
     if (config.local_owner) { const settings = await api("/api/model-connection"); $("#connection-url").value = settings.base_url; $("#connection-model").value = settings.model; }
     const requested = location.hash.slice(1).split("/");
     if (requested[0] === "examples") showExample(requested[1]);

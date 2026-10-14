@@ -36,6 +36,7 @@
 - UI 단일 입력 규격: `job_agent/documents/profile.py`의 `ResumeProfile` / `job-agent.resume/v1`(`docs/resume_input.md`). 수정 시 검수 승인 해제, 미검수 값 실행 차단. 저장본 `result/resume_profile/`은 개인정보로 Git 제외. 기존 CLI 원문/master 형식은 호환성 유지.
 - 정형 반복 입력은 `documents/sections.py`의 단일 스키마와 필드의 선택적 `items`로 보관한다. `value`는 결정론적 표시 텍스트이며 불일치를 차단한다. Word·Markdown·JSON은 같은 프로필 입력이다. 공개 DOCX는 브라우저 fflate/DOMParser로만 읽고 내려받으며 서버 추출 API 차단은 유지한다. 임의 문서의 사실 분류/날짜 추정이나 포털의 반복 행 생성으로 설명하지 않는다. 정리 결과는 명시 검수 후 회사 변환에 선택하며 공통 원본을 덮어쓰지 않는다.
 - **Agent 3 (ResumeOps Sync)**: `job_agent/agents/site_resume.py`, `job_agent/browser/mapper.py`, `job_agent/browser/connector.py`, `job_agent/browser/filler.py`(사이트별 규격 변환·DOM 수집·폼 매핑·검수된 필드 입력). UI의 `job_agent/browser/sync.py`는 명시 승인 후 저장·재접속 확인을 수행한다. Playwright 반자동이며 로그인·최종 검수·지원은 사용자, 기존 CLI 최종 저장은 수동이다.
+- **공고 알림**: `job_agent/alerts/`(코드 인증 이메일·플랫폼별 조건·예약 발송, `docs/job_alerts.md`). 운영자 Tavily 키·SMTP 계정을 쓰므로 로컬 소유자 전용이며 공유·공개 체험·Vercel에 열지 않는다. 저장본 `result/job_alerts/`은 Git 제외. 검색 요약을 마감/적합도 확정으로 표현하지 않는다.
 - 공용 엔진: `job_agent/core/engine.py`(`LangGraphAgentEngine`)
 - LangChain/LangGraph 예제 및 실험: `job_agent/examples/langchain_demo.py`, `job_agent/examples/langgraph_demo.py`
 - 기타 실험: `job_agent/examples/construction.py`
@@ -87,6 +88,7 @@
 
 ### 작업 종료
 
+- 사용자 재확인(2026-10-15): 하나의 작업 줄기 또는 의미 있는 변경 묶음을 완료하고 검증하면 `job_agent` 브랜치에서 커밋·푸시까지 진행한다. 개별 파일 수정마다 커밋하지 않으며, 사용자가 별도로 보류를 요청한 경우에는 따른다.
 - 무엇을 바꿨는지 `history.md`에 날짜별로 요약한다.
 - 다음 에이전트가 이어받아야 할 의도, 제약, 남은 작업은 `conversation_l2_cache.md`에 갱신한다.
 - 검증을 실행했다면 명령과 결과를 남기고, 실행하지 못했다면 이유를 남긴다.

@@ -12,6 +12,7 @@ from urllib.parse import urlsplit
 
 from job_agent.documents.profile import ResumeProfile
 from job_agent.documents.sections import SECTIONS
+from job_agent.alerts.service import AlertScheduler, JobAlerts
 from job_agent.ui.local_kit import local_kit
 from job_agent.ui.page import remote_page
 from job_agent.ui.service import WorkspaceService
@@ -32,6 +33,7 @@ ASSETS = {
     "/resume-files.js": ("resume-files.js", "text/javascript"),
     "/fflate.min.js": ("fflate.min.js", "text/javascript"),
     "/tutorials.js": ("tutorials.js", "text/javascript"),
+    "/alerts.js": ("alerts.js", "text/javascript"),
 }
 ASSETS.update(
     {
@@ -105,12 +107,17 @@ class LocalServer(ThreadingHTTPServer):
         self.public_demo = public_demo
         self.handoff_origin = handoff_origin
         self.visitors = VisitorWorkspaces() if public_demo else None
+        # Alerts use the owner's search key and mail account: never in public demo.
+        self.alerts = None if public_demo else JobAlerts(self.service.paths)
+        self.alert_scheduler = AlertScheduler(self.alerts) if self.alerts else None
 
     def server_close(self):
         try:
             self.sharing.stop()
             if self.visitors:
                 self.visitors.close()
+            if getattr(self, "alert_scheduler", None):
+                self.alert_scheduler.close()
             service = getattr(self, "service", None)
             if service:
                 service.close()
@@ -237,6 +244,18 @@ class Handler(BaseHTTPRequestHandler):
             return False
         return True
 
+    def _alerts_owner(self):
+        if (
+            self.server.alerts
+            and self.local_owner
+            and self.headers.get("X-Admin-Token") == self.server.admin_token
+        ):
+            return True
+        self._reply(
+            403, {"error": "공고 알림은 이 PC의 로컬 화면에서만 설정할 수 있습니다."}
+        )
+        return False
+
     def do_GET(self):
         if not self._trusted():
             return
@@ -336,6 +355,10 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path == "/api/model-connection" and not self._admin():
             return
+        if path == "/api/alerts":
+            if self._alerts_owner():
+                self._reply(200, self.server.alerts.status())
+            return
         if path == "/api/local-kit":
             self._reply(200, local_kit(), "application/zip")
             return
@@ -431,6 +454,18 @@ class Handler(BaseHTTPRequestHandler):
                 },
             )
             return
+        # Portal sessions belong to this PC: shared visitors never drive them.
+        if path == "/api/sync" and (
+            not self.local_owner
+            or self.headers.get("X-Admin-Token") != self.server.admin_token
+        ):
+            self._reply(
+                403,
+                {
+                    "error": "실제 사이트 입력·저장은 이 PC의 로컬 화면에서만 실행합니다."
+                },
+            )
+            return
         if (
             path == "/api/run"
             and not self.local_owner
@@ -461,6 +496,10 @@ class Handler(BaseHTTPRequestHandler):
             self._reply(403, {"error": "임시 작업 공간에서만 삭제할 수 있습니다."})
             return
         if path in admin_paths and not self._admin():
+            return
+        if path == "/api/alerts":
+            if self._alerts_owner():
+                self._alert_action(payload)
             return
         if (
             path
@@ -522,6 +561,32 @@ class Handler(BaseHTTPRequestHandler):
             )
         finally:
             self.server.run_lock.release()
+
+    def _alert_action(self, payload):
+        alerts = self.server.alerts
+        actions = {
+            "request_code": alerts.request_code,
+            "verify": alerts.verify,
+            "save": alerts.save,
+            "delete": alerts.delete,
+            "forget_email": alerts.forget_email,
+            "run": alerts.run_now,
+        }
+        action = actions.get(payload.get("action"))
+        if action is None:
+            self._reply(400, {"error": "알 수 없는 공고 알림 동작입니다."})
+            return
+        try:
+            self._reply(200, action(payload))
+        except ValueError as exc:
+            self._reply(400, {"error": str(exc)})
+        except Exception as exc:
+            self._reply(
+                502,
+                {
+                    "error": f"메일 서버 또는 검색 API 연결을 확인하세요. ({type(exc).__name__})"
+                },
+            )
 
 
 def main(argv=None):

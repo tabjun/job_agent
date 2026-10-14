@@ -45,7 +45,7 @@
     const section = document.createElement("section"); section.className = "tutorial-section";
     const heading = document.createElement("h3"); heading.textContent = "실제 실행 화면";
     const note = document.createElement("p"); note.className = "tutorial-note";
-    note.textContent = "Codex 내 브라우저에서 가상 자료로 직접 수행한 화면입니다. 이미지에 개인정보·로그인 정보는 포함하지 않았습니다. 화면을 누르면 확대됩니다.";
+    note.textContent = "가상 자료로 기능을 직접 수행한 기록입니다. 디자인 개편 이전 화면이므로 현재 화면과 색상·배치가 다를 수 있습니다. 개인정보·로그인 정보는 포함하지 않았습니다. 화면을 누르면 확대됩니다.";
     const gallery = document.createElement("div"); gallery.className = "tutorial-gallery";
     images.forEach(([file, title, description], index) => {
       const figure = document.createElement("figure");

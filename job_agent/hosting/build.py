@@ -104,6 +104,7 @@ def build(output=None, privacy_contact=""):
         "fflate.min.js",
         "fflate.LICENSE.txt",
         "tutorials.js",
+        "alerts.js",
     ]:
         shutil.copy2(static / name, public / name)
     (public / "tutorials").mkdir()
