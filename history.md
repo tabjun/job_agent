@@ -254,3 +254,11 @@
 - 남은 리뷰 항목: 일반 검색의 AI/R 부분 문자열 오탐(가상 email career에서 재현), 미등록 도구 호출의 ToolMessage 누락(모의 엔진 재현). 이번 변경은 이 두 경로를 수정하지 않았으며 다음 개선 후보로 문서화.
 - 검증: `.venv/Scripts/python.exe -m unittest discover -s tests` 135개, 실패 없음/4개 skip. `test_*browser.py` 8개, 실패 없음/2개 skip. 메일 8개·알림 12개 및 튜토리얼 에셋 3개 통과. `uvx ruff check job_agent/alerts/service.py tests/test_alert_mail.py tests/test_job_alerts.py`, `git diff --check` 통과.
 - 가상 임시 작업 공간에서 7개 화면 × 1440/390px 스크린샷 14개, 가로 넘침·JS 오류 없음. ignored `result/ui_review/white-2026-10-15/`에 증빙. 실제 SMTP/Tavily/채용사이트 변경·공개 배포·커밋·푸시 없음. 기존 미커밋 변경 보존.
+
+## 2026-10-15: 글자 크기 확대와 첫 사용 흐름 도식
+
+- 기본 글자 14→16px, 입력/라벨 16px, 안내 본문 16px 및 넉넉한 줄 간격으로 가독성 개선. 작은 보조 글자·메뉴·버튼·제목도 함께 확대하고 모바일 메뉴는 13px 유지. 알림 설정의 긴 환경변수 안내는 줄바꿈 처리.
+- 처음 사용하기 상단에 기능별 SVG 아이콘과 화살표를 연결한 5단계 도식 추가: 공통 이력서 → 직무 맞춤 정리 → 플랫폼 전환 → 로그인·검수 → 저장·재확인. 클릭하면 기존 화면으로 이동하며 입력·저장을 자동 실행하지 않음. 좁은 화면에서는 세로 도식. 공고 탐색은 독립 기능으로 표시.
+- guide-overview 안내 이미지 갱신. 기존 테스트의 중복 action 선택자를 사용자에게 보이는 버튼 이름으로 명확히 수정.
+- 검증: UI 브라우저 4개(최초 선택자 오류 수정 후 해당 예시 테스트 재실행 통과), 알림 브라우저1, hosting5, 튜토리얼 에셋3 통과. 가상 임시 공간 7화면 × 1440/1024/768/390/320px, 아이콘 5개·각 단계 이동·가로 넘침/JS 오류 없음. 증빙은 ignored result/ui_review/readability-2026-10-15/.
+- `git diff --check`와 예시 테스트 Ruff 통과. hosting 테스트의 기존 Ruff 경고 3개는 HEAD 원본에도 동일하며 이 작업에서 변경하지 않음. 완료 묶음은 job_agent에서 커밋·푸시하며 공개 배포·실제 포털/API/SMTP 실행 없음.

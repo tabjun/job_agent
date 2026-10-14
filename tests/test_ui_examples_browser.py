@@ -92,7 +92,7 @@ class ExamplesBrowserTests(unittest.TestCase):
                         ).count(),
                         0,
                     )
-                    page.locator('[data-guide-action="profile"]').click()
+                    page.get_by_role("button", name="내 이력서 작성", exact=True).click()
                     expect(page.locator("#profile-panel")).to_be_visible()
                     expect(page.locator("#profile-panel")).to_have_attribute("open", "")
                     page.locator(".nav[data-view=examples]").click()
