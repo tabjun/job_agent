@@ -60,20 +60,16 @@
 
 ## 6. Codex/Claude 병행 작업 규칙
 
-루트 `../AGENTS.md`와 `../tools/isolation/README.md`의 공통 프로젝트 격리 규칙도 따른다.
-사용자 최신 정책은 추가 worktree 없이 단일 체크아웃이다. 모든 폴더가 현재 브랜치를 공유하므로 한 프로젝트씩 작업하고 미커밋 변경을 정리한 뒤 전환한다. 프로젝트 파일만 명시적으로 staging/commit하고 해당 브랜치를 명시해 push한다.
-2026-10-08 루트 정책 설정 요청에 한해 공통 규칙/검사와 stock/apple AGENTS를 추가한다.
-일반 기능 커밋은 계속 `resum/`만 포함하고 공통 정책 변경은 별도 커밋으로 분리한다.
+2026-10-15부터 이 프로젝트는 독립 저장소(`tabjun/job_agent`)다. 예전 `personal_ai_project` 모노레포의 공통 격리 규칙(`../AGENTS.md`, `../tools/isolation/`)과 단일 체크아웃 정책은 더 이상 적용되지 않는다. quantitative_trading·advertisement_apple은 별도 저장소다.
 
 이 저장소는 Codex와 로컬 Claude를 병행해서 사용할 수 있다. 어느 에이전트가 작업하더라도 흐름이 끊기지 않도록 아래 규칙을 따른다.
 
 ### 브랜치 규칙 (강제)
 
-- **이 프로젝트 폴더(`resum/`)의 모든 작업은 `job_agent` 브랜치에서만 수행한다.** 새 기능/수정 브랜치를 별도로 파지 않는다. 작업 시작 시 `job_agent`가 아니면 먼저 체크아웃한다.
+- **이 저장소의 모든 작업은 `job_agent` 브랜치에서만 수행한다.** 새 기능/수정 브랜치를 별도로 파지 않는다. 작업 시작 시 `job_agent`가 아니면 먼저 체크아웃한다.
 - **머지 흐름은 `job_agent` → `develop` → `main`** 순서다. 다른 방향(예: `main`에서 직접 작업, `job_agent`에서 `main`으로 직행)은 금지한다.
 - 커밋은 `job_agent`에 선형으로 쌓고, 승격이 필요할 때만 `develop`으로, 검증 후 `main`으로 머지한다.
-- 인접 폴더(`../stock`, `../quantitative_trading`)는 이 프로젝트 작업 범위 밖이며 `job_agent` 커밋에 포함하지 않는다.
-- 사용자 재확인(2026-10-06): 작업 준비를 위해 `stock`, `main`, `develop`을 `job_agent`에 병합하지 않는다. 프로젝트 브랜치 전환과 다른 프로젝트 이력 통합을 혼동하지 않는다.
+- 사용자 재확인(2026-10-06): 작업 준비를 위해 `main`, `develop`을 `job_agent`에 병합하지 않는다.
 
 ### 작업 시작
 

@@ -22,7 +22,7 @@ application submission are not added by hosting migration.
 
 ## Preserve and Export
 
-Run in `resum/` (PowerShell or Linux):
+Run at the repository root (PowerShell or Linux):
 
 ```sh
 python -m job_agent.hosting.build --backup
@@ -65,7 +65,7 @@ The exported API contains an explicit top-level `handler` class: Vercel's static
 entrypoint detection does not accept an import-only handler file in this setup.
 The production build uses standard `functions` + `public` output, not legacy builds.
 
-Use only the exported directory, not the parent monorepo or a private backup:
+Use only the exported directory, not the repository itself or a private backup:
 
 ```sh
 vercel login
@@ -109,8 +109,8 @@ stay there. Direct portal login/MFA and selected-field/save review remain requir
 
 ## GitHub and Free Tiers
 
-`deploy/github/vercel-workflow.yml` is a manual-run CI template for the parent
-monorepo, scoped to exporting `resum/`. It is **not activated** merely by storing
+`deploy/github/vercel-workflow.yml` is a manual-run CI template for this
+repository (tabjun/job_agent). It is **not activated** merely by storing
 this file. Install it as `.github/workflows/resume-public.yml` after review, then
 run it against `job_agent`. The build needs only Python's standard library.
 It uploads a code-only artifact with three-day retention. With deployment
@@ -120,7 +120,7 @@ Never put personal model keys, `.env`, private snapshots or resumes in artifacts
 
 The initial CLI deployment does not imply GitHub automatic deployment is connected.
 The direct GitHub connection attempted by Vercel can require separately authorizing
-the Vercel GitHub integration. Do not connect the raw monorepo with default settings:
+the Vercel GitHub integration. Do not connect the raw repository with default settings:
 its private local files and full LLM dependencies are not this export's environment.
 No other project branches are merged for deployment.
 

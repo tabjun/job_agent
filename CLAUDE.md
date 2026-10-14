@@ -14,7 +14,7 @@
 
 ## 브랜치 규칙 (강제)
 
-- 이 프로젝트(`resum/`) 작업은 **`job_agent` 브랜치에서만** 수행한다. 별도 feature/fix 브랜치를 파지 않는다.
+- 이 저장소 작업은 **`job_agent` 브랜치에서만** 수행한다. 별도 feature/fix 브랜치를 파지 않는다.
 - 머지 흐름은 **`job_agent` → `develop` → `main`**. 상세는 `AGENTS.md §6`, `process.md` 참조.
 
 ## Codex와의 인계 규칙

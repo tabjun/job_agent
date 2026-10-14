@@ -1,3 +1,9 @@
+## 2026-10-15: 독립 저장소 분리 후 옛 resum/·모노레포 문구 정리 (Claude)
+
+- personal_ai_project 모노레포를 프로젝트별 저장소로 나눠 이 프로젝트가 `tabjun/job_agent` 루트가 되었다(job_agent/develop/main 이력 그대로, 커밋별 트리 일치 확인). 로컬 폴더는 `toy_agent_project/job_agent`, 미커밋 작업·개인 자료·.venv 패키지 구성은 그대로 옮겼다.
+- 사용자 요청으로 AGENTS·CLAUDE·process·README·docs/public_hosting·배포 템플릿의 `resum/` 경로와 모노레포 공통 격리 규칙 언급을 저장소 루트 기준으로 고쳤다. 지난 이력 기록 속 resum 표기는 당시 사실이라 두었다.
+- 작업 중이던 미커밋 변경과 섞이지 않도록 이 문구 수정만 커밋했다.
+
 ## 2026-10-09: 전체 변경 커밋·푸시 준비
 
 - 사용자 요청으로 공통 경로 보호 정책과 resum 기능/문서/테스트 변경을 별도 커밋으로 분리. 개인정보 자료·키·로그인 세션·생성 결과는 staging 제외. 합성 사용 예시 이미지 14개만 포함.

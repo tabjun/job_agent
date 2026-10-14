@@ -22,7 +22,7 @@
 
 이력서는 **공통 이력서** 한 곳에서 작성합니다. 기본 **Word(.docx) 양식 다운로드·업로드**, Markdown·JSON 선택과 화면 직접 입력을 지원합니다. 경력·기술·프로젝트·학력·자격증·수상·어학·교육·활동·논문·특허·링크는 **추가 버튼으로 항목마다** 등록합니다. 회사명·재직 기간·재직 중, 자격번호·발급기관·취득일 등을 각각 입력하며 키워드 한 칸을 임의로 나누지 않습니다. 내부 규격은 `job-agent.resume/v1`이며 변경·가져오기 후 검수해야 실행할 수 있습니다. **이력서 정리 → 결과 검수 → 정리 결과로 회사 양식 변환**으로 이어지고 공통 원본은 보존합니다. [항목·양식 작성·검수 절차](docs/resume_input.md)를 참고하세요. 개인 자료는 공개 배포/Git에 포함하지 않습니다.
 
-`resum/` 폴더에서 실행합니다. 기본 모드는 **LLM 없음**이며 모델/API 키 없이 공고 JSON 정렬, DOCX 원문 읽기·문단 재배열, 검수된 회사 양식 변환과 결과 기록을 사용할 수 있습니다. OpenAI/Gemini/자체 LLM은 화면에서 선택합니다. AI는 API 사용 동의를 체크하고 실행할 때만 호출됩니다. 공공기관/ALIO 연동은 보류합니다.
+저장소 루트에서 실행합니다. 기본 모드는 **LLM 없음**이며 모델/API 키 없이 공고 JSON 정렬, DOCX 원문 읽기·문단 재배열, 검수된 회사 양식 변환과 결과 기록을 사용할 수 있습니다. OpenAI/Gemini/자체 LLM은 화면에서 선택합니다. AI는 API 사용 동의를 체크하고 실행할 때만 호출됩니다. 공공기관/ALIO 연동은 보류합니다.
 
 ### 다운로드·사이트 저장
 
@@ -33,7 +33,7 @@
 ### PowerShell (Windows)
 
 ```powershell
-cd "C:\Users\jun99\OneDrive - 계명대학교\바탕 화면\Analysis\toy_agent_project\resum"
+cd "C:\Users\jun99\OneDrive - 계명대학교\바탕 화면\Analysis\toy_agent_project\job_agent"
 code .  # 선택: VS Code로 폴더 열기
 uv sync --extra browser
 uv run job-agent ui
@@ -42,7 +42,7 @@ uv run job-agent ui
 ### Linux / Bash
 
 ```bash
-cd /path/to/toy_agent_project/resum
+cd /path/to/job_agent
 code .  # 선택: VS Code로 폴더 열기
 uv sync --extra browser
 uv run job-agent ui
@@ -372,7 +372,7 @@ uv run job-agent form-fill --site company-example --target result/company_target
 ## 패키지 구조
 
 ```text
-resum/
+<저장소 루트>/
   job_agent/
     core/        # LangGraph 엔진, 프로젝트 경로, 결과 저장
     agents/      # 공고 탐색, 서류 수정, 사이트 패키지 생성
@@ -402,7 +402,7 @@ uv run job-agent library build --corpus result/resume_library/corpus.json --draf
 uv run job-agent form-map --mode playwright --sites wanted --headed --interactive
 ```
 
-`python -m job_agent <명령>`도 동일하게 지원합니다. 상대 자료/결과 경로는 현재 작업 디렉토리가 아닌 `resum/` 기준입니다. 설치된 `job-agent` 명령은 다른 디렉토리에서도 기존 자료와 로그인 프로필을 사용합니다. 개발 설치(`uv sync`)를 기준으로 하며, 휠 배포 시 자료 디렉토리 설정은 별도 구성이 필요합니다. 기존 루트 Python 파일을 직접 실행하던 명령은 통합 CLI로 변경했습니다.
+`python -m job_agent <명령>`도 동일하게 지원합니다. 상대 자료/결과 경로는 현재 작업 디렉토리가 아닌 저장소 루트 기준입니다. 설치된 `job-agent` 명령은 다른 디렉토리에서도 기존 자료와 로그인 프로필을 사용합니다. 개발 설치(`uv sync`)를 기준으로 하며, 휠 배포 시 자료 디렉토리 설정은 별도 구성이 필요합니다. 기존 루트 Python 파일을 직접 실행하던 명령은 통합 CLI로 변경했습니다.
 
 ### 화면으로 따라 하기
 

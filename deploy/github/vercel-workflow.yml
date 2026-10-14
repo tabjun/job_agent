@@ -1,6 +1,6 @@
 name: Resume Public Export
 
-# Install this template at the parent Git repository's
+# Install this template at this repository's
 # .github/workflows/resume-public.yml after reviewing it.
 on:
   workflow_dispatch:
@@ -27,7 +27,6 @@ jobs:
         with:
           python-version: '3.12'
       - name: Export code only (no private environment)
-        working-directory: resum
         run: python -m job_agent.hosting.build --output "$RUNNER_TEMP/resume-public"
       - uses: actions/upload-artifact@v4
         with:

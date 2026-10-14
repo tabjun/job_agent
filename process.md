@@ -83,7 +83,7 @@ UI의 이력서 입력은 `job-agent.resume/v1`으로 통일한다(`docs/resume_
 
 ## Git 운용
 
-- **브랜치: `resum/` 작업은 `job_agent`에서만 한다. 머지는 `job_agent` → `develop` → `main` 순.** (강제 규칙은 `AGENTS.md §6` 참조)
+- **브랜치: 이 저장소 작업은 `job_agent`에서만 한다. 머지는 `job_agent` → `develop` → `main` 순.** (강제 규칙은 `AGENTS.md §6` 참조)
   - 승격 예시:
     ```bash
     git checkout develop && git merge --ff-only job_agent   # 1단계 승격
