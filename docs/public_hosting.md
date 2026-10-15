@@ -61,6 +61,20 @@ This is a stable Vercel production alias, not the temporary Cloudflare tunnel.
 The original server does not have to stay on for the public web to work.
 Own-PC portal automation still requires the user's connector running locally.
 
+2026-10-15 production update: the white card UI, 16px body/input text and
+five-step clickable icon overview are deployed at the stable URL above.
+Deployment ID: `dpl_57U9vdCQ32RPa8RZoHe6ez5KYuVz` (Vercel READY).
+Unauthenticated HTML/CSS/app.js hashes match the reviewed allowlist export.
+Live 1440px/390px browser checks verified the five rendered icons and navigation,
+no horizontal overflow or JavaScript errors, synthetic manual search through
+`/api/run`, and clearing results on reload without local/session storage.
+An OpenAI-provider request was rejected with HTTP 400. Portal/account operations
+were not exercised; their own-PC review requirement remains unchanged.
+
+Git push alone does not publish this export. A public UI change is complete only
+after the exported build is deployed and the stable production URL is checked.
+The previous missing update was an omitted deployment, not a browser cache issue.
+
 The exported API contains an explicit top-level `handler` class: Vercel's static
 entrypoint detection does not accept an import-only handler file in this setup.
 The production build uses standard `functions` + `public` output, not legacy builds.

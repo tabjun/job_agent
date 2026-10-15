@@ -26,7 +26,7 @@
 
 ![최신 UI: 큰 글자와 기능별 아이콘으로 표시한 이력서 준비·저장 5단계](job_agent/ui/static/tutorials/guide-overview.jpg)
 
-2026-10-15 확인: 공개 주소는 정상 응답(HTTP 200)하며, 위 화면의 최신 UI는 저장소에 반영된 상태입니다. 공개 웹에 최신 디자인을 적용하려면 [공개 배포 절차](docs/public_hosting.md)에 따라 별도 배포해야 합니다.
+2026-10-15 확인: 위 최신 UI를 공개 웹에 배포했습니다. [서비스 열기](https://job-agent-resume-web.vercel.app/)에서 흰 바탕·16px 본문·5단계 아이콘 도식과 기능 이동을 데스크톱·모바일로 확인했습니다. Git 푸시와 Vercel 배포는 별도 절차이며, 후속 공개 화면 변경도 [공개 배포 절차](docs/public_hosting.md)에 따라 배포 후 확인합니다.
 
 ## UI 빠른 실행
 

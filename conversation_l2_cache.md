@@ -192,3 +192,9 @@
 
 - README 상단에 공개 https://job-agent-resume-web.vercel.app/ 및 예시/로컬8765/PC연결도구 링크, 최신 큰 글자·아이콘 도식과 이미지 추가. 공개주소 GET 200 확인. 최신 UI는 아직 공개 배포 미적용으로 구분하고 별도 배포 문서 연결.
 - 직전 UI 변경은 4909bd8로 푸시 완료. 이번 문서 변경도 검증 후 job_agent 커밋·푸시, 공개 배포는 하지 않음.
+
+## 2026-10-15 최신: 실제 공개 사이트 UI 반영 완료
+
+- 사용자가 색상/아이콘 변경이 안 보인다고 제보. 원인은 Git만 푸시하고 Vercel 별도 배포 누락. 공개 HTTP 재현에서 새 도식/CSS 없음 → allowlist export 54파일 dry-run 검수 → 기존 프로젝트 production 배포.
+- https://job-agent-resume-web.vercel.app 는 현재 흰색/인디고·16px·아이콘5단계 최신 UI. READY dpl_57U9vdCQ32RPa8RZoHe6ez5KYuVz. HTTPS HTML/CSS/app.js 해시 일치, 실제 1440/390px 아이콘/단계 이동/검색API/리로드정리/저장소 비사용/넘침·JS오류 없음 확인. 유료공급자400 차단 확인, 실제 개인/포털/메일 작업 없음.
+- README/배포문서 상태 갱신, 공개 화면 변경은 export검수·배포·고정주소 readback까지 완료 기준(process.md). Git 자동배포는 연결했다고 주장하지 말 것. ignored 배포본 result/hosting/ui-refresh-4909bd8/, 증빙 result/ui_review/production-2026-10-15/. 문서 변경도 커밋·푸시.

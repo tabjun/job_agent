@@ -268,3 +268,11 @@
 - 사용자 요청으로 README 상단에 고정 공개 주소, 사용 예시, 로컬 기본 주소와 PC 연결 도구 링크 추가. 최신 흰 바탕/큰 글자/5단계 아이콘 도식 및 저장소의 안내 이미지 소개.
 - 공개 주소 HTTPS GET HTTP 200 확인, 최신 도식은 아직 공개 배포되지 않은 상태도 구분. 실제 접속 포트·본인 PC 연결·승인 저장 조건 유지.
 - 문서 링크 대상/이미지 경로 및 git diff --check 확인. 문서만 수정하여 기능 테스트는 재실행하지 않음. job_agent에서 커밋·푸시하며 공개 배포는 수행하지 않음.
+
+## 2026-10-15: 공개 UI 배포 누락 수정
+
+- 사용자 제보를 공개 HTTPS 재현으로 확인: 저장소에는 도식/새 CSS가 있지만 프로덕션에는 둘 다 없음. 캐시 회피 쿼리로도 재현되어 커밋·푸시 후 별도 배포 누락이 원인으로 확인됨.
+- `hosting.build`로 새 ignored result/hosting/ui-refresh-4909bd8/에 코드 전용 export. 54파일/ZIP 경로 검수 및 Vercel dry-run에서 .env.local·.vercel 제외 확인. 원본/개인 백업/세션 업로드 없이 기존 taejun2/job-agent-resume-web에 production 배포.
+- READY dpl_57U9vdCQ32RPa8RZoHe6ez5KYuVz, 고정 https://job-agent-resume-web.vercel.app 별칭 반영. 실제 HTTPS HTML/CSS/app.js SHA256이 export와 일치. /api/run 가상 수동 공고 HTTP200, OpenAI 요청400 차단 확인.
+- 공개 주소 1440/390px 실제 브라우저에서 흰 바탕·본문16px·SVG아이콘5개·도식 단계 이동·예시 공고 실행·새로고침 결과 정리·local/sessionStorage 비사용·가로 넘침/JS 오류 없음 확인. 개인 자료·포털 로그인/저장·유료 API·메일 발송은 실행하지 않음. 증빙 ignored result/ui_review/production-2026-10-15/.
+- README의 미배포 안내를 실제 배포 상태로 갱신. 공개 화면 완료 기준을 process.md에 기록. 문서 검증 후 job_agent 커밋·푸시.
