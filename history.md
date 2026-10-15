@@ -276,3 +276,8 @@
 - READY dpl_57U9vdCQ32RPa8RZoHe6ez5KYuVz, 고정 https://job-agent-resume-web.vercel.app 별칭 반영. 실제 HTTPS HTML/CSS/app.js SHA256이 export와 일치. /api/run 가상 수동 공고 HTTP200, OpenAI 요청400 차단 확인.
 - 공개 주소 1440/390px 실제 브라우저에서 흰 바탕·본문16px·SVG아이콘5개·도식 단계 이동·예시 공고 실행·새로고침 결과 정리·local/sessionStorage 비사용·가로 넘침/JS 오류 없음 확인. 개인 자료·포털 로그인/저장·유료 API·메일 발송은 실행하지 않음. 증빙 ignored result/ui_review/production-2026-10-15/.
 - README의 미배포 안내를 실제 배포 상태로 갱신. 공개 화면 완료 기준을 process.md에 기록. 문서 검증 후 job_agent 커밋·푸시.
+
+## 2026-10-15: 확정 서비스 변경 즉시 배포 원칙
+
+- 사용자 명시 지시: 서비스 변경을 확정해 커밋·푸시하면 별도 요청 없이 즉시 allowlist 배포·공개 주소 검증까지 진행. AGENTS.md/process.md에 강제 종료 절차로 반영. 문서만 변경해 배포본이 같으면 재배포는 불필요하며 실제 Git 자동배포 연동과 구분.
+- 이번 변경은 운영 지침/기록만 수정. git diff --check 확인, 기능 변경/재배포 없음. job_agent 커밋·푸시.

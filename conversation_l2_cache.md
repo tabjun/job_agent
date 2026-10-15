@@ -198,3 +198,8 @@
 - 사용자가 색상/아이콘 변경이 안 보인다고 제보. 원인은 Git만 푸시하고 Vercel 별도 배포 누락. 공개 HTTP 재현에서 새 도식/CSS 없음 → allowlist export 54파일 dry-run 검수 → 기존 프로젝트 production 배포.
 - https://job-agent-resume-web.vercel.app 는 현재 흰색/인디고·16px·아이콘5단계 최신 UI. READY dpl_57U9vdCQ32RPa8RZoHe6ez5KYuVz. HTTPS HTML/CSS/app.js 해시 일치, 실제 1440/390px 아이콘/단계 이동/검색API/리로드정리/저장소 비사용/넘침·JS오류 없음 확인. 유료공급자400 차단 확인, 실제 개인/포털/메일 작업 없음.
 - README/배포문서 상태 갱신, 공개 화면 변경은 export검수·배포·고정주소 readback까지 완료 기준(process.md). Git 자동배포는 연결했다고 주장하지 말 것. ignored 배포본 result/hosting/ui-refresh-4909bd8/, 증빙 result/ui_review/production-2026-10-15/. 문서 변경도 커밋·푸시.
+
+## 2026-10-15 최종 운용 원칙: 확정 커밋 즉시 서비스 반영
+
+- 사용자가 서비스 변경 확정 커밋 후 바로 반영을 명시. 앞으로 검증 → 커밋·푸시 → allowlist export/검수 → 기존 Vercel 프로덕션 배포 → 고정 HTTPS 실제 확인을 별도 요청 없이 한 작업으로 완료한다. AGENTS.md/process.md에 반영. 사용자 보류는 따름. 개인정보/키/세션 업로드 금지 유지. 문서만 바뀌어 배포본이 같으면 재배포 불필요.
+- 이 원칙은 에이전트 수행 절차이며 GitHub 자동배포가 설정됐다는 뜻은 아님. 현재 공개 UI는 최신 상태. 이번은 지침 문서만 변경해 커밋·푸시.
