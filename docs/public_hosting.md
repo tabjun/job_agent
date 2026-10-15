@@ -75,6 +75,15 @@ Git push alone does not publish this export. A public UI change is complete only
 after the exported build is deployed and the stable production URL is checked.
 The previous missing update was an omitted deployment, not a browser cache issue.
 
+2026-10-15 search-quality update: source commit `ee3c9c9`, production deployment
+`dpl_9eWnXwFTBNJs6QfVaqBgWwM5WBjp`. The stable site's HTML/CSS/app.js/alerts.js and
+connector ZIP hashes match the reviewed 56-file export. Live 1440px/390px checks
+verified company evidence, five original-site comparison links, and no overflow
+or JavaScript errors. Public manual-input metadata/word-boundary execution passed;
+public `source=web` remains rejected. The downloadable own-PC connector contains
+the new local search collector; operator search/mail credentials are not exposed.
+See [search quality findings and remaining limits](search_quality.md).
+
 The exported API contains an explicit top-level `handler` class: Vercel's static
 entrypoint detection does not accept an import-only handler file in this setup.
 The production build uses standard `functions` + `public` output, not legacy builds.

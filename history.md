@@ -291,3 +291,4 @@
 - Agent 1의 별도 고정 직무/2026년5월/인크루트 누락/본문 마감 단어 무조건 제외 경로를 공통 수집기로 통합. 경력 요청은 보존하되 experience_verified=False로 표시. 원문 없는 경력조건 충족을 주장하지 않음.
 - 새 test_search_quality12, test_native_jobs5, test_job_hunter_search1, 알림회귀2 추가. 전체154 tests 실패없음/4skip 및 추가 Agent1 테스트1 통과. 최종 원문5/검색12/알림14/메일8 재실행 통과, 브라우저8 실패없음/2skip. 기록 재생 UI 1440/390px 회사/출처/JS·넘침 확인 통과. 새 모듈/테스트 scoped Ruff, diff --check 통과(기존 다른 함수의 lint는 별도).
 - docs/search_quality.md에 실측·한계·원문기준 품질 측정 절차, 감사 CLI --live/--replay 기록. API 예산을 제한한 실제 공고 조회만 수행했고 메일/LLM/포털 계정 변경 없음. 코드 전용 export를 준비하며 커밋·푸시 후 기존 Vercel 배포·고정주소 확인을 이어서 수행.
+- 배포 완료: 기능 커밋 ee3c9c9 푸시 직후 result/hosting/search-quality-final-20261015/ allowlist 56파일 dry-run(.env.local/.vercel 제외) 검수, Vercel READY dpl_9eWnXwFTBNJs6QfVaqBgWwM5WBjp. 고정 HTTPS의 HTML/CSS/app.js/alerts.js/PC연결ZIP 해시 일치, ZIP native_jobs 포함/비밀경로 제외 확인. 실제 API 기업명·영어경계·공개web검색400 차단 및 1440/390px 공개 UI 회사명·비교링크5개·JS/넘침 확인 통과. 문서에 실제 배포 결과 기록 후 추가 푸시.
