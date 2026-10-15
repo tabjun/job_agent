@@ -163,6 +163,8 @@ function renderRun(run) {
   if (config.local_owner && run.ai?.seconds !== undefined) entries.push(["AI 처리", `${run.ai.seconds}초`]);
   if (config.local_owner && run.ai?.usage?.total_tokens !== undefined) entries.push(["토큰", run.ai.usage.total_tokens]);
   if (run.result.jobs) entries.push(["공고", `${run.result.jobs.length}개`]);
+  if (run.result.jobs) entries.push(["기업명 표기", `${new Set(run.result.jobs.map(job => job.company).filter(name => name && name !== "원문 확인")).size}개`]);
+  for (const item of run.result.coverage?.platforms || []) entries.push([titles[item.site] || ({catch:"캐치",jobkorea:"잡코리아",saramin:"사람인",wanted:"원티드",incruit:"인크루트"})[item.site], item.error ? "검색 실패" : `수집 ${item.fetched}건${item.sources?.native_search ? " · 원문 검색" : item.sources?.search_index ? " · 웹 색인" : ""}`]);
   for (const [label, value] of entries) { const span = document.createElement("span"); span.textContent = `${label}  `; const strong = document.createElement("strong"); strong.textContent = value; span.append(strong); metrics.append(span); }
   $("#jobs").replaceChildren();
   for (const [index, job] of (run.result.jobs || []).entries()) {
@@ -172,8 +174,9 @@ function renderRun(run) {
     const heading = document.createElement(job.url ? "a" : "strong"); heading.textContent = job.title || "제목 없음";
     if (job.url) { heading.href = job.url; heading.target = "_blank"; heading.rel = "noopener noreferrer"; }
     const excerpt = document.createElement("p"); excerpt.textContent = job.content.slice(0, 250);
-    const meta = document.createElement("div"); meta.className = "job-meta"; meta.textContent = `${job.status_reason} · 일치 키워드: ${job.matched_keywords.join(", ") || "없음"}`;
-    content.append(heading, excerpt, meta); row.append(number, content); $("#jobs").append(row);
+    const meta = document.createElement("div"); meta.className = "job-meta"; meta.textContent = `${job.status_reason} · 일치 키워드: ${job.matched_keywords.join(", ") || "없음"}${job.retrieval_source === "native_search" ? " · 사이트 원문 검색" : job.retrieval_source === "search_index" ? " · 웹 색인" : ""}`;
+    const employer = document.createElement("p"); employer.className = "job-company"; employer.textContent = `기업·브랜드(원문 표기): ${job.company || "원문 확인"}`;
+    content.append(employer, heading, excerpt, meta); row.append(number, content); $("#jobs").append(row);
   }
   $("#review-note").textContent = (run.result.notes || ["양식 변환 초안 · 입력·저장·지원 미실행"]).join(" / ");
   renderReport();

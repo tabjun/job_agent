@@ -35,51 +35,33 @@ async def get_financial_health(company_name: str):
 
 @tool
 async def search_jobs(role: str, experience: str, location: str, keywords: str):
+    """5개 플랫폼의 직무 공고 후보를 공통 수집기로 찾습니다.
+
+    원문 검색 또는 웹 색인 표본이며 경력·마감·지원 자격은 원문 검수가 필요합니다.
+    경력 요청은 결과에 보존하지만 검증되지 않은 조건을 충족했다고 단정하지 않습니다.
     """
-    데이터 분석/사이언티스트 직무 위주로 현재 채용 중인 공고를 검색합니다.
-    - 라벨링, 단순 입력 등 단순 반복 업무는 자동으로 제외 쿼리가 포함됩니다.
-    - 검색 결과에서 공고의 신선도(마감 여부)와 경력 요건을 1차적으로 확인합니다.
-    """
-    fixed_role = (
-        "데이터 분석가 OR 데이터 사이언티스트 OR Data Analyst OR Data Scientist"
-    )
-    exclude_keywords = "-라벨링 -수집알바 -단순입력 -labeling -마감 -종료 -지원마감"
-    # 현재 날짜 기준 (2026-05-11 기준)
-    current_date_info = "2026년 5월 채용공고"
+    from job_agent.ui.service import SITES, WorkspaceService
 
-    print(f"  [Recruiter] '{keywords}' 기반 '{experience}' 공고 검색 중...")
-    search = TavilySearchResults(max_results=20)
-
-    # 더 정확한 필터링을 위한 쿼리 고도화
-    queries = [
-        f'("{fixed_role}") {experience} {location} {keywords} {exclude_keywords} {current_date_info} site:wanted.co.kr OR site:rememberapp.co.kr',
-        f'("{fixed_role}") {experience} {location} {keywords} {exclude_keywords} {current_date_info} site:saramin.co.kr OR site:jobkorea.co.kr',
-        f'("{fixed_role}") {experience} {location} {keywords} {exclude_keywords} {current_date_info} site:jumpit.co.kr OR site:catch.co.kr',
-    ]
-
-    all_results = []
-    for q in queries:
-        try:
-            res = await search.ainvoke(q)
-            if isinstance(res, list):
-                all_results.extend(res)
-        except Exception as e:
-            print(f"    >> 검색 쿼리 에러: {e}")
-
-    # URL 중복 제거 및 검색 결과 품질 향상
-    unique_results = {}
-    for r in all_results:
-        url = r.get("url")
-        if url and url not in unique_results:
-            # 제목이나 내용에 '마감', '종료'가 있으면 1차 제외
-            content = r.get("content", "").lower()
-            if any(
-                term in content for term in ["마감", "종료", "채용 완료", "expired"]
-            ):
-                continue
-            unique_results[url] = r
-
-    return list(unique_results.values())
+    service = WorkspaceService(ephemeral=True)
+    try:
+        result = await asyncio.to_thread(
+            service._search,
+            {
+                "source": "web",
+                "search_consent": True,
+                "role": role or "데이터 분석가, 데이터 사이언티스트",
+                "location": location,
+                "keywords": keywords,
+                "exclude": "라벨링, 수집알바, 단순입력, labeling",
+                "sites": list(SITES),
+            },
+        )
+        return [
+            {**row, "experience_requested": experience, "experience_verified": False}
+            for row in result["jobs"]
+        ]
+    finally:
+        service.close()
 
 
 @tool

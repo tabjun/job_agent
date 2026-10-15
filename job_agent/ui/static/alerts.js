@@ -95,6 +95,7 @@
       const sites = Object.keys(alert.platforms).map(key => state.platforms.find(p => p.key === key)?.name || key).join(" · ");
       info.append(title, element("p", "", `${alert.email} · ${scheduleText(alert)} · ${sites} · 최대 ${alert.max_results}건`));
       info.append(element("p", "", `다음 발송 ${alert.next_run.replace("T", " ")} · 지금까지 보낸 공고 ${alert.sent_count}건${alert.last_status ? ` · 최근: ${alert.last_status}` : ""}`));
+      if (alert.last_collection) { const stats = alert.last_collection; info.append(element("p", "", `최근 수집 ${stats.fetched || 0}건 · 조건 통과 ${stats.eligible || 0}건 · 메일 선택 ${stats.selected || 0}건 / 상한 ${stats.limit}건${stats.missing_keyword_evidence ? ` · 키워드 근거 부족 ${stats.missing_keyword_evidence}건` : ""}`)); }
       const actions = element("div", "alert-actions");
       actions.append(
         button("pencil", "수정", () => { fillForm(alert); $("#alert-form").scrollIntoView({behavior: "smooth"}); }),

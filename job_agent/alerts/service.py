@@ -15,6 +15,7 @@ import smtplib
 import ssl
 import threading
 import time
+from collections import Counter
 from contextlib import contextmanager
 from datetime import datetime, timedelta
 from email.message import EmailMessage
@@ -23,6 +24,15 @@ from uuid import uuid4
 
 from job_agent.alerts.mail import compose, posting_fields
 from job_agent.core.paths import ProjectPaths
+from job_agent.core.postings import (
+    allowed_regions,
+    canonical_url,
+    diverse_jobs,
+    matches,
+    queries,
+    region_check,
+    rejection,
+)
 from job_agent.ui.service import SITES, WorkspaceService, safe_url, terms
 
 NAMES = {
@@ -57,52 +67,10 @@ def _text(data, key, limit):
     return value.strip()
 
 
-# Cities people write instead of the province; a region name also covers these.
-REGION_ALIASES = {
-    "서울": "강남 서초 송파 강동 강서 마포 영등포 여의도 용산 성동 성수 광진 구로 가산 금천 "
-    "관악 동작 종로 중구 을지로 서대문 은평 노원 도봉 강북 성북 동대문 중랑 양천 상암",
-    "경기": "성남 판교 분당 수원 용인 수지 기흥 화성 동탄 안양 평촌 과천 의왕 군포 광명 "
-    "부천 고양 일산 파주 김포 하남 구리 남양주 의정부 양주 안산 시흥 평택 오산 이천",
-}
-OTHER_REGIONS = re.compile(
-    r"(인천|부산|대구|대전|울산|세종|강원|충북|충남|충청|전북|전남|전라|경북|경남|경상|제주)"
-    r"(?=광역시|특별자치|도\b|시\b|\s|$|[,·/()\[\]])|광주광역시"
-)
-
-
 # Search/listing pages that Tavily returns alongside individual postings.
 LISTING = re.compile(
     r"검색결과|직무별 채용|직업별 채용|채용정보 \| 총|기업정보|관련 📢 채용공고"
 )
-
-
-def allowed_regions(location):
-    """'서울, 경기' -> every name that counts as inside those regions."""
-    names = set()
-    for term in terms(location):
-        names.add(term)
-        names.update(REGION_ALIASES.get(term, "").split())
-    return names
-
-
-def region_check(body, allowed):
-    """(keep, label): keep postings in or without a stated region, drop others."""
-    inside = sorted((name for name in allowed if name in body), key=body.index)
-    if inside:
-        return True, inside[0]
-    other = OTHER_REGIONS.search(body)
-    if other:
-        return False, other.group(0)
-    return True, ""
-
-
-def matches(term, body):
-    """English/number terms match whole words (R, AI, ML); Korean matches inside words."""
-    if re.fullmatch(r"[a-z0-9+#.]+", term):
-        return (
-            re.search(rf"(?<![a-z0-9]){re.escape(term)}(?![a-z0-9])", body) is not None
-        )
-    return term in body
 
 
 def _hash(salt, code):
@@ -433,20 +401,27 @@ class JobAlerts:
         return self.status()
 
     # running -------------------------------------------------------------
-    def collect(self, alert):
+    def collect(self, alert, diagnostics=None):
         """Search each platform with its own conditions; drop already-mailed URLs."""
-        seen = set(alert.get("sent_urls", []))
+        seen = {canonical_url(url) for url in alert.get("sent_urls", [])}
         jobs, errors = {}, []
-        year = self.clock().year
+        counts = Counter()
         for site, rule in alert["platforms"].items():
-            query = " ".join(
-                x for x in [rule["role"], rule["location"], rule["keywords"]] if x
-            )
-            try:
-                rows = self.searcher(f"{query} 채용 {year}", [SITES[site]])
-            except Exception as exc:  # noqa: BLE001 - one platform failing must not stop others
-                errors.append(f"{NAMES[site]} 검색 실패: {type(exc).__name__}")
-                continue
+            rows = []
+            failed = []
+            for query in queries(rule["role"], rule["location"], rule["keywords"]):
+                try:
+                    result = self.searcher(query, [SITES[site]])
+                    if not isinstance(result, list):
+                        raise TypeError("Invalid search results")
+                    rows.extend(result[:20])
+                except Exception as exc:  # noqa: BLE001 - preserve other queries and platforms
+                    failed.append(type(exc).__name__)
+            if failed:
+                errors.append(
+                    f"{NAMES[site]} 검색 일부/전체 실패: {', '.join(dict.fromkeys(failed))}"
+                )
+            counts["fetched"] += len(rows)
             wanted, excluded = terms(rule["keywords"]), terms(rule["exclude"])
             regions = allowed_regions(rule["location"])
             for row in rows if isinstance(rows, list) else []:
@@ -458,24 +433,37 @@ class JobAlerts:
                     host == SITES[site] or host.endswith("." + SITES[site])
                 ):
                     continue
+                reason = rejection(row, SITES[site], self.clock().date())
+                if reason:
+                    counts[reason] += 1
+                    continue
+                url = canonical_url(url)
                 title = str(row.get("title", "")).strip()[:300]
-                content = str(row.get("content", row.get("description", "")))[:2000]
+                content = str(
+                    row.get("raw_content")
+                    or row.get("content")
+                    or row.get("description", "")
+                )[:10000]
                 body = f"{title} {content}".casefold()
                 # A title is not a posting identity: employers and requisitions
                 # can share it. Deduplicate by URL to avoid hiding valid jobs.
                 if LISTING.search(title):
+                    counts["listing"] += 1
                     continue
                 if (
                     url in seen
                     or url in jobs
                     or any(matches(t, body) for t in excluded)
                 ):
+                    counts["sent_duplicate_or_excluded"] += 1
                     continue
                 hits = [t for t in wanted if matches(t, body)]
                 if wanted and not hits:
+                    counts["missing_keyword_evidence"] += 1
                     continue
                 keep, region = region_check(body, regions) if regions else (True, "")
                 if not keep:
+                    counts["region"] += 1
                     continue
                 jobs[url] = {
                     "site": site,
@@ -489,7 +477,18 @@ class JobAlerts:
         ranked = sorted(
             jobs.values(), key=lambda j: len(j["matched_keywords"]), reverse=True
         )
-        return ranked[: alert.get("max_results", 10)], errors
+        selected = diverse_jobs(ranked, alert.get("max_results", 10))
+        if diagnostics is not None:
+            diagnostics.update(
+                {
+                    **counts,
+                    "eligible": len(ranked),
+                    "selected": len(selected),
+                    "limit": alert.get("max_results", 10),
+                    "complete": False,
+                }
+            )
+        return selected, errors
 
     @staticmethod
     def compose(alert, jobs):
@@ -503,12 +502,19 @@ class JobAlerts:
             )
         if alert is None:
             raise ValueError("알림을 찾을 수 없습니다.")
-        jobs, errors = self.collect(alert)
+        collection = {}
+        jobs, errors = self.collect(alert, collection)
         if not send:
             status = f"새 공고 {len(jobs)}건 (미리보기 · 미발송)"
             if errors:
                 status += " · " + "; ".join(errors)
-            return {"id": alert_id, "status": status, "mailed": False, "jobs": jobs}
+            return {
+                "id": alert_id,
+                "status": status,
+                "mailed": False,
+                "jobs": jobs,
+                "collection": collection,
+            }
         with self._state():
             # The search ran unlocked: honour deletes, revoked addresses and edits.
             data = self._load()
@@ -521,17 +527,20 @@ class JobAlerts:
                     "jobs": [],
                 }
             mailed = False
-            sent = set(stored.get("sent_urls", []))
+            sent = {canonical_url(url) for url in stored.get("sent_urls", [])}
             jobs = [j for j in jobs if j["url"] not in sent]
             if stored.get("revision") != alert.get("revision"):
                 status = "검색 중 설정이 바뀌어 이번 발송을 건너뜀"
-            elif errors and len(errors) == len(alert["platforms"]):
+            elif not jobs and errors and len(errors) == len(alert["platforms"]):
                 status = "검색 실패 · " + "; ".join(errors)
             elif not jobs:
                 status = "새 공고 없음 · 메일 미발송"
             else:
                 try:
-                    self.mailer.send(stored["email"], *compose(stored, jobs, NAMES))
+                    self.mailer.send(
+                        stored["email"],
+                        *compose({**stored, "collection": collection}, jobs, NAMES),
+                    )
                     mailed = True
                     status = f"새 공고 {len(jobs)}건 발송"
                 except Exception as exc:  # noqa: BLE001 - keep URLs unsent and record why
@@ -540,12 +549,19 @@ class JobAlerts:
                 status += " · " + "; ".join(errors)
             stored["last_run_at"] = self.clock().isoformat(timespec="seconds")
             stored["last_status"] = status
+            stored["last_collection"] = collection
             if mailed:
                 stored["sent_urls"] = (
                     stored.get("sent_urls", []) + [j["url"] for j in jobs]
                 )[-SENT_MEMORY:]
             self._save(data)
-        return {"id": alert_id, "status": status, "mailed": mailed, "jobs": jobs}
+        return {
+            "id": alert_id,
+            "status": status,
+            "mailed": mailed,
+            "jobs": jobs,
+            "collection": collection,
+        }
 
     def run_now(self, payload):
         with self._process_lock():

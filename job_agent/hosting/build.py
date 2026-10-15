@@ -20,6 +20,8 @@ RUNTIME = [
     "core/__init__.py",
     "core/paths.py",
     "core/storage.py",
+    "core/postings.py",
+    "core/native_jobs.py",
     "documents/__init__.py",
     "documents/source.py",
     "documents/profile.py",

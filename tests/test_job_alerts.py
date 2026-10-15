@@ -185,9 +185,7 @@ class JobAlertTests(unittest.TestCase):
         self.searcher.side_effect = lambda query, domains: results[domains[0]]
         result = self.alerts.run_now({"id": alert_id})
         queries = [call.args for call in self.searcher.call_args_list]
-        self.assertIn(
-            ("데이터 분석가 서울 Python, SQL 채용 2026", ["wanted.co.kr"]), queries
-        )
+        self.assertIn(("데이터 분석가 서울 채용", ["wanted.co.kr"]), queries)
         self.assertEqual(
             [job["url"] for job in result["jobs"]],
             [
@@ -235,6 +233,51 @@ class JobAlertTests(unittest.TestCase):
         )
         later = self.alerts.run_now({"id": alert_id})
         self.assertEqual([job["company"] for job in later["jobs"]], ["가상기업 C"])
+
+    def test_preview_explains_collection_limit_and_keyword_rejections(self):
+        self.verify()
+        alert_id = self.save(platforms={"wanted": RULE}, max_results=1)["alerts"][0][
+            "id"
+        ]
+        self.searcher.return_value = [
+            {
+                "title": "[가상기업 A] 분석가 SQL",
+                "url": "https://www.wanted.co.kr/wd/11",
+                "content": "서울",
+            },
+            {
+                "title": "[가상기업 B] 분석가 Python",
+                "url": "https://www.wanted.co.kr/wd/12",
+                "content": "서울",
+            },
+            {
+                "title": "[가상기업 C] 분석가",
+                "url": "https://www.wanted.co.kr/wd/13",
+                "content": "서울",
+            },
+        ]
+        result = self.alerts.run_now({"id": alert_id, "send": False})
+        self.assertEqual(result["collection"]["fetched"], 3)
+        self.assertEqual(result["collection"]["eligible"], 2)
+        self.assertEqual(result["collection"]["selected"], 1)
+        self.assertEqual(result["collection"]["missing_keyword_evidence"], 1)
+        self.assertFalse(result["mailed"])
+        self.assertEqual(len(self.mailer.sent), 1)  # verification only
+
+    def test_full_text_keyword_evidence_survives_short_summary(self):
+        self.verify()
+        alert_id = self.save(platforms={"wanted": RULE})["alerts"][0]["id"]
+        self.searcher.return_value = [
+            {
+                "title": "[가상기업] 데이터 분석가",
+                "url": "https://www.wanted.co.kr/wd/14",
+                "content": "요약에 기술 없음",
+                "raw_content": "설명 " * 1000 + "서울 SQL",
+            }
+        ]
+        result = self.alerts.run_now({"id": alert_id, "send": False})
+        self.assertEqual(len(result["jobs"]), 1)
+        self.assertEqual(result["jobs"][0]["matched_keywords"], ["sql"])
 
     def test_preview_and_mail_failure_do_not_mark_sent(self):
         self.verify()

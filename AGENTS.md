@@ -37,6 +37,7 @@
 - 정형 반복 입력은 `documents/sections.py`의 단일 스키마와 필드의 선택적 `items`로 보관한다. `value`는 결정론적 표시 텍스트이며 불일치를 차단한다. Word·Markdown·JSON은 같은 프로필 입력이다. 공개 DOCX는 브라우저 fflate/DOMParser로만 읽고 내려받으며 서버 추출 API 차단은 유지한다. 임의 문서의 사실 분류/날짜 추정이나 포털의 반복 행 생성으로 설명하지 않는다. 정리 결과는 명시 검수 후 회사 변환에 선택하며 공통 원본을 덮어쓰지 않는다.
 - **Agent 3 (ResumeOps Sync)**: `job_agent/agents/site_resume.py`, `job_agent/browser/mapper.py`, `job_agent/browser/connector.py`, `job_agent/browser/filler.py`(사이트별 규격 변환·DOM 수집·폼 매핑·검수된 필드 입력). UI의 `job_agent/browser/sync.py`는 명시 승인 후 저장·재접속 확인을 수행한다. Playwright 반자동이며 로그인·최종 검수·지원은 사용자, 기존 CLI 최종 저장은 수동이다.
 - **공고 알림**: `job_agent/alerts/`(코드 인증 이메일·플랫폼별 조건·예약 발송, `docs/job_alerts.md`). 운영자 Tavily 키·SMTP 계정을 쓰므로 로컬 소유자 전용이며 공유·공개 체험·Vercel에 열지 않는다. 저장본 `result/job_alerts/`은 Git 제외. 검색 요약을 마감/적합도 확정으로 표현하지 않는다.
+- **공고 수집 품질**: UI·알림·Agent 1은 `ui/service.py`, `core/native_jobs.py`, `core/postings.py`의 공통 수집/근거 규칙을 사용한다. 잡코리아·사람인 공개 HTML 카드 우선, 미지원/차단은 색인 검색으로 대체. 로그인·쿠키·내부 API·차단 우회 없이 동작하며 전체 공고/경력 적합성 보장이 아니다. 실시간 점검은 `examples/retrieval_audit.py --live`로 명시 실행하고 원시 응답은 ignored `result/search_quality/`에만 보관한다(`docs/search_quality.md`).
 - 공용 엔진: `job_agent/core/engine.py`(`LangGraphAgentEngine`)
 - LangChain/LangGraph 예제 및 실험: `job_agent/examples/langchain_demo.py`, `job_agent/examples/langgraph_demo.py`
 - 기타 실험: `job_agent/examples/construction.py`

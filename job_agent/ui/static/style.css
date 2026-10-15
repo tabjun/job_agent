@@ -374,6 +374,11 @@ pre{border-color:var(--line);border-radius:10px;background:#fafbfe;color:#3e475c
 @media(prefers-reduced-motion:reduce){.nav{transition:none}}
 
 /* Readable text and an interactive overview of the reviewed workflow. */
+.search-scope,.native-search{font-size:14px;color:var(--muted);line-height:1.8;overflow-wrap:anywhere}
+.native-search{border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin:16px 0;background:var(--surface)}
+.native-search summary{cursor:pointer;font-weight:600;color:var(--ink)}
+.native-search a{color:var(--accent);text-decoration:underline}
+.job-content .job-company{font-size:15px;font-weight:600;color:var(--ink);margin:0 0 6px}
 :root{line-height:1.65}
 .nav{font-size:15px;min-height:50px;white-space:normal}
 .nav svg{width:20px;height:20px}

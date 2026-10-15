@@ -2,36 +2,40 @@
 
 import asyncio
 import base64
-from copy import deepcopy
-from datetime import datetime, timezone
-from io import BytesIO
 import json
 import os
-from pathlib import Path
 import re
 import tempfile
 import time
+from collections import Counter
+from concurrent.futures import ThreadPoolExecutor
+from copy import deepcopy
+from datetime import datetime, timezone
+from io import BytesIO
+from pathlib import Path
 from urllib.parse import urlsplit
 from uuid import uuid4
 from zipfile import ZipFile
 
 from job_agent.core.paths import ProjectPaths, load_environment
+from job_agent.core.postings import (
+    SITES,
+    allowed_regions,
+    canonical_url,
+    diverse_jobs,
+    matches,
+    posting_fields,
+    queries,
+    region_check,
+    rejection,
+)
 from job_agent.core.storage import ArtifactStore
-from job_agent.documents.source import DocxReader
 from job_agent.documents.profile import ResumeProfile
 from job_agent.documents.sections import render_items
+from job_agent.documents.source import DocxReader
 from job_agent.sites.application import ApplicationAdapter
 from job_agent.sites.registry import SiteRegistry
 from job_agent.ui.models import CustomModel
-
-
-SITES = {
-    "catch": "catch.co.kr",
-    "jobkorea": "jobkorea.co.kr",
-    "saramin": "saramin.co.kr",
-    "wanted": "wanted.co.kr",
-    "incruit": "incruit.com",
-}
 
 
 def safe_url(value):
@@ -71,6 +75,7 @@ def analysis_prompt(task):
 
 async def analyze(provider, model, task, data):
     from langchain_core.messages import HumanMessage, SystemMessage
+
     from job_agent.core.engine import LangGraphAgentEngine
 
     engine = LangGraphAgentEngine(
@@ -203,16 +208,28 @@ class WorkspaceService:
 
     @staticmethod
     def _web_search(query, domains):
+        from job_agent.core.native_jobs import native_search
         from tavily import TavilyClient
 
+        if len(domains) == 1:
+            try:
+                native = native_search(query, domains[0])
+                if native:
+                    return native[:20]
+            except Exception:  # noqa: BLE001 - unsupported/blocked pages fall back to search index
+                pass
         response = TavilyClient().search(
             query=query,
             include_domains=domains,
-            max_results=12,
+            max_results=20,
             search_depth="basic",
             include_answer=False,
+            include_raw_content="markdown",
         )
-        return response.get("results", [])
+        return [
+            {**row, "retrieval_source": "search_index"}
+            for row in response.get("results", [])
+        ]
 
     def _search(self, payload):
         keywords = text_field(payload, "keywords", 300)
@@ -220,6 +237,7 @@ class WorkspaceService:
         role = text_field(payload, "role", 100)
         excluded = terms(text_field(payload, "exclude", 300))
         source = payload.get("source", "manual")
+        diagnostics = []
         if source == "web":
             if (
                 not self.config()["web_search"]
@@ -235,8 +253,45 @@ class WorkspaceService:
                 raise ValueError("검색 사이트를 선택하세요.")
             if not role and not keywords:
                 raise ValueError("직무 또는 키워드를 입력하세요.")
-            query = f"{role} {location} {keywords} 채용 {datetime.now().year}"
-            rows = self._searcher(query, [SITES[s] for s in sites])
+            sites = list(dict.fromkeys(sites))
+            plan = [
+                (site, query)
+                for site in sites
+                for query in queries(role, location, keywords)
+            ]
+
+            def retrieve(item):
+                site, query = item
+                try:
+                    candidates = self._searcher(query, [SITES[site]])
+                    if not isinstance(candidates, list):
+                        raise TypeError("Invalid search results")
+                    return site, candidates[:20], ""
+                except Exception as exc:  # noqa: BLE001 - preserve other platforms on provider failure
+                    return site, [], type(exc).__name__
+
+            rows = []
+            with ThreadPoolExecutor(max_workers=3) as pool:
+                for site, candidates, error in pool.map(retrieve, plan):
+                    diagnostics.append(
+                        {"site": site, "fetched": len(candidates), "error": error}
+                    )
+                    diagnostics[-1]["sources"] = dict(
+                        Counter(
+                            row.get("retrieval_source", "custom")
+                            for row in candidates
+                            if isinstance(row, dict)
+                        )
+                    )
+                    rows.extend(
+                        {**row, "site": site}
+                        for row in candidates
+                        if isinstance(row, dict)
+                    )
+            if all(item["error"] for item in diagnostics):
+                raise ValueError(
+                    "모든 플랫폼 검색에 실패했습니다. 검색 API 연결을 확인하세요."
+                )
         elif source == "manual":
             raw = text_field(payload, "postings", 100000)
             if not raw:
@@ -244,20 +299,39 @@ class WorkspaceService:
             rows = json.loads(raw)
         else:
             raise ValueError("Unknown source")
-        if not isinstance(rows, list) or len(rows) > 100:
+        if not isinstance(rows, list) or len(rows) > (300 if source == "web" else 100):
             raise ValueError("공고는 최대 100개 JSON 배열이어야 합니다.")
         found = {}
+        dropped = Counter()
+        regions = allowed_regions(location)
         for row in rows:
             if not isinstance(row, dict):
                 raise ValueError("Invalid posting")
-            content = str(row.get("content", row.get("description", "")))[:10000]
+            content = str(
+                row.get("raw_content")
+                or row.get("content")
+                or row.get("description", "")
+            )[:10000]
             title = str(row.get("title", ""))[:300]
             url = safe_url(row.get("url", ""))
+            if source == "web":
+                reason = rejection(row, SITES[row["site"]])
+                if reason:
+                    dropped[reason] += 1
+                    continue
+                url = canonical_url(url)
             body = f"{title} {content}".casefold()
-            if any(t in body for t in excluded):
+            if source == "web" and regions and not region_check(body, regions)[0]:
+                dropped["region"] += 1
                 continue
-            hits = [t for t in terms(keywords) if t in body]
+            if any(matches(t, body) for t in excluded):
+                dropped["excluded_keyword"] += 1
+                continue
+            hits = [t for t in terms(keywords) if matches(t, body)]
             key = url or f"{title}\n{content}"
+            if key in found:
+                dropped["duplicate"] += 1
+                continue
             found.setdefault(
                 key,
                 {
@@ -268,13 +342,31 @@ class WorkspaceService:
                     "status": "unknown",
                     "status_reason": "원문 마감 상태 미검증",
                     "source": source,
+                    "site": row.get("site"),
+                    "retrieval_source": row.get(
+                        "retrieval_source",
+                        "manual" if source == "manual" else "search_index",
+                    ),
+                    **posting_fields({**row, "content": content}),
                 },
             )
         jobs = sorted(
             found.values(), key=lambda row: len(row["matched_keywords"]), reverse=True
         )
+        collected = len(jobs)
+        # Keep one platform from occupying every display slot.
+        if source == "web":
+            jobs = diverse_jobs(jobs, 100)
         return {
             "jobs": jobs,
+            "coverage": {
+                "platforms": diagnostics,
+                "fetched": len(rows),
+                "unique_postings": collected,
+                "displayed": len(jobs),
+                "dropped": dict(dropped),
+                "complete": False,
+            },
             "report": "\n\n".join(
                 f"{i + 1}. {row['title']}\n{row['url']}\n{row['content']}"
                 for i, row in enumerate(jobs)
@@ -282,6 +374,23 @@ class WorkspaceService:
             "notes": [
                 "키워드 일치 순서이며 의미 적합도나 지원 가능 판정이 아닙니다.",
                 "검색 요약의 지역·경력·마감은 원문에서 확인하세요.",
+                *(
+                    [
+                        f"플랫폼별 검색 {len(diagnostics)}회 · 수집 {len(rows)}건 → 중복·비공고 제외 후 {collected}건, 표시 {len(jobs)}건. 사이트 전체 공고가 아닌 웹 검색 색인 표본입니다."
+                    ]
+                    if source == "web"
+                    else []
+                ),
+                *(
+                    [
+                        "일부 플랫폼 검색 실패: "
+                        + ", ".join(
+                            dict.fromkeys(d["site"] for d in diagnostics if d["error"])
+                        )
+                    ]
+                    if any(d["error"] for d in diagnostics)
+                    else []
+                ),
             ],
         }
 
