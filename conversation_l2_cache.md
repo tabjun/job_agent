@@ -241,3 +241,11 @@
 - 실제 2사이트 표본29건 회사명미확인0, 직접화면의 빗썸/퍼플아카데미/TMCK/메가스터디 등 복구 확인. 캐치/원티드/인크루트 원문·페이지네이션은 미구현이라 전체와 동등 주장 금지. docs/search_quality.md + examples/retrieval_audit --live/--replay, ignored result/search_quality/ 근거. 저장알림은 max30 유지, 실제메일/계정변경 없음. 다중직무 검색요청 최대15회로 늘 수 있어 UI/문서 안내.
 - 전체154 테스트 실패0/4skip + Agent1신규1 통과; 최종원문5/검색12/알림14/메일8 재실행, 브라우저8 실패0/2skip, replay UI1440/390 정상. 공개는 여전히 수동 입력만. 서비스 영향 확정 커밋/푸시 후 allowlist export 기존Vercel 즉시 배포·실주소 확인 필요. 준비 export result/hosting/search-quality-20261015/.
 - 최신 배포/푸시: ee3c9c9 기능커밋 후 즉시 Vercel READY dpl_9eWnXwFTBNJs6QfVaqBgWwM5WBjp. 최종export result/hosting/search-quality-final-20261015/ 56파일 검수. 고정주소 HTML/CSS/JS/PC연결ZIP 해시/새원문모듈 및 실API/1440·390 UI 확인 통과. 공개웹은 수동정리, 실제 검색개선은 로컬/업데이트PC연결도구용임을 구분. 배포기록 문서만 추가커밋·푸시.
+
+
+## 2026-10-20 최신: 마감 공고 메일 혼입 수정
+
+- 사용자 제보: 7월 게시 자체가 아니라 이미 접수 종료된 공고가 메일에 포함됨. 실제 발송 이력·현재 재검색에서 제보 직무의 캐치 링크 확인. Gmail 본문은 재인증 필요. 해당 캐치 원문은 조회 제한으로 현재 상태 미확인, 공개 타 플랫폼 동종 직무는 7월 마감 확인.
+- 공통 postings 접수기간/괄호날짜/단독 마감문구 파서 보강. core/job_status.py 현재 공개 상세 원문 검증을 프로젝트 메일에 의무 적용: 마감/미확인 보류, 오래된 게시일은 제외 근거 아님. known route만 무쿠키 HTTP, 3MB/8초 제한, 4동시/8묶음/최대100개, 확인된 결과가 메일 상한 채우면 중단. 원문 상태가 바뀔 수 있어 지원 전 최종 검토는 사용자. UI/Agent1 목록 전체의 현재 모집 검증으로 설명하지 않음.
+- 실제 검색266 후보 재생+최종 현재 원문72 점검 → 검색마감30/상세마감24/미확인17 제외·보류 → 진행근거30 선택. 메일 미발송, 저장 알림 파일 해시 유지. 증빙 ignored result/search_quality/deadlines-20261020/. 수신 이메일·광고 설정·sent_urls 건드리지 않음.
+- 검증: 전체172 실패0/4skip, 최종 직무/메일/마감33·검색12·메일8·마지막 상태라벨10 통과. scoped Ruff/diff 통과. 코드 전용 최종 export result/hosting/deadline-check-final-20261020/ 및 56파일 dry-run/PC연결ZIP 최신 소스 일치·비밀경로 제외 확인. job_agent 커밋·푸시 후 고정 HTTPS 배포·실화면 확인까지 이어서 완료할 것. 운영자 알림은 공개 Vercel에서 계속 차단, 공개에는 갱신된 PC 연결 ZIP만 배포.

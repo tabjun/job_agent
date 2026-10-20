@@ -16,6 +16,7 @@ import ssl
 import threading
 import time
 from collections import Counter
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from datetime import datetime, timedelta
 from email.message import EmailMessage
@@ -23,6 +24,7 @@ from urllib.parse import urlsplit
 from uuid import uuid4
 
 from job_agent.alerts.mail import compose, posting_fields
+from job_agent.core.job_status import confirmation_current, verify_posting
 from job_agent.core.paths import ProjectPaths
 from job_agent.core.postings import (
     allowed_regions,
@@ -179,13 +181,16 @@ def file_lock(path, timeout, stale, busy):
 
 
 class JobAlerts:
-    def __init__(self, paths=None, searcher=None, mailer=None, clock=None):
+    def __init__(
+        self, paths=None, searcher=None, mailer=None, clock=None, verifier=None
+    ):
         self.paths = paths or ProjectPaths()
         self.folder = self.paths.results / "job_alerts"
         self.file = self.folder / "alerts.json"
         self.searcher = searcher or WorkspaceService._web_search
         self.mailer = mailer or Mailer()
         self.clock = clock or datetime.now
+        self.verifier = verifier or verify_posting
 
     # storage -------------------------------------------------------------
     def _load(self):
@@ -477,7 +482,44 @@ class JobAlerts:
         ranked = sorted(
             jobs.values(), key=lambda j: len(j["matched_keywords"]), reverse=True
         )
-        selected = diverse_jobs(ranked, alert.get("max_results", 10))
+        # Search snippets are candidates, not proof that applications are open.
+        # Verify in small batches so closed/unknown rows do not consume mail slots.
+        ordered = diverse_jobs(ranked, len(ranked))
+        selected = []
+        limit = alert.get("max_results", 10)
+
+        def verify(job):
+            try:
+                result = self.verifier(job["url"], self.clock())
+                return (
+                    {**result, "checked_at": self.clock().isoformat(timespec="seconds")}
+                    if isinstance(result, dict)
+                    else {}
+                )
+            except Exception:  # noqa: BLE001 - an unreadable detail is withheld
+                return {}
+
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            for offset in range(0, min(len(ordered), 100), 8):
+                batch = ordered[offset : min(offset + 8, 100)]
+                checks = list(pool.map(verify, batch))
+                counts["detail_checked"] += len(batch)
+                for job, check in zip(batch, checks):
+                    if check.get("status") == "closed":
+                        counts["detail_closed"] += 1
+                    elif check.get("status") != "open":
+                        counts["status_unverified"] += 1
+                    else:
+                        confirmed = {**job, "status_check": check}
+                        if check.get("deadline"):
+                            confirmed["period"] = "~ " + check["deadline"]
+                        elif check.get("period"):
+                            confirmed["period"] = check["period"]
+                        selected.append(confirmed)
+                if len(selected) >= limit:
+                    break
+        counts["detail_not_checked"] = len(ordered) - counts["detail_checked"]
+        selected = selected[:limit]
         if diagnostics is not None:
             diagnostics.update(
                 {
@@ -506,6 +548,8 @@ class JobAlerts:
         jobs, errors = self.collect(alert, collection)
         if not send:
             status = f"새 공고 {len(jobs)}건 (미리보기 · 미발송)"
+            if collection.get("status_unverified"):
+                status += f" · 접수상태 미확인 {collection['status_unverified']}건 보류"
             if errors:
                 status += " · " + "; ".join(errors)
             return {
@@ -529,6 +573,14 @@ class JobAlerts:
             mailed = False
             sent = {canonical_url(url) for url in stored.get("sent_urls", [])}
             jobs = [j for j in jobs if j["url"] not in sent]
+            current = [
+                j
+                for j in jobs
+                if confirmation_current(j.get("status_check", {}), self.clock())
+            ]
+            collection["closed_before_send"] = len(jobs) - len(current)
+            jobs = current
+            collection["selected"] = len(jobs)
             if stored.get("revision") != alert.get("revision"):
                 status = "검색 중 설정이 바뀌어 이번 발송을 건너뜀"
             elif not jobs and errors and len(errors) == len(alert["platforms"]):
@@ -545,6 +597,8 @@ class JobAlerts:
                     status = f"새 공고 {len(jobs)}건 발송"
                 except Exception as exc:  # noqa: BLE001 - keep URLs unsent and record why
                     status = f"메일 발송 실패: {type(exc).__name__}"
+            if collection.get("status_unverified"):
+                status += f" · 접수상태 미확인 {collection['status_unverified']}건 보류"
             if errors and not status.startswith("검색 실패"):
                 status += " · " + "; ".join(errors)
             stored["last_run_at"] = self.clock().isoformat(timespec="seconds")

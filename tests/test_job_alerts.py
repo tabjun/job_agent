@@ -55,12 +55,14 @@ class JobAlertTests(unittest.TestCase):
         self.folder = tempfile.TemporaryDirectory()
         self.mailer = FakeMailer()
         self.searcher = Mock(return_value=[])
+        self.verifier = Mock(return_value={"status": "open", "evidence": "fixture"})
         self.now = datetime(2026, 10, 12, 9, 0)  # Monday
         self.alerts = JobAlerts(
             ProjectPaths(Path(self.folder.name)),
             self.searcher,
             self.mailer,
             clock=lambda: self.now,
+            verifier=self.verifier,
         )
         self.env = patch.dict(os.environ, {"TAVILY_API_KEY": "fixture"})
         self.env.start()
@@ -234,6 +236,42 @@ class JobAlertTests(unittest.TestCase):
         later = self.alerts.run_now({"id": alert_id})
         self.assertEqual([job["company"] for job in later["jobs"]], ["가상기업 C"])
 
+    def test_mail_contains_only_currently_confirmed_open_details(self):
+        self.verify()
+        alert_id = self.save(platforms={"wanted": RULE})["alerts"][0]["id"]
+        self.searcher.return_value = [
+            {
+                "title": "SQL 분석",
+                "url": f"https://www.wanted.co.kr/wd/{i}",
+                "content": "서울",
+            }
+            for i in range(1, 5)
+        ]
+
+        def check(url, now):
+            return {
+                "status": {"1": "closed", "2": "unknown", "3": "open"}.get(
+                    url.rsplit("/", 1)[1]
+                ),
+                "deadline": "2026-11-30",
+            }
+
+        self.verifier.side_effect = check
+        before = len(self.mailer.sent)
+        result = self.alerts.run_now({"id": alert_id})
+        self.assertEqual(
+            [j["url"] for j in result["jobs"]], ["https://www.wanted.co.kr/wd/3"]
+        )
+        self.assertEqual(len(self.mailer.sent), before + 1)
+        self.assertIn("2026-11-30", self.mailer.sent[-1][2])
+        self.assertEqual(result["collection"]["detail_closed"], 1)
+        self.assertEqual(result["collection"]["status_unverified"], 2)
+        self.verifier.side_effect = TimeoutError("unreadable")
+        again = self.alerts.run_now({"id": alert_id})
+        self.assertFalse(again["mailed"])
+        self.assertIn("보류", again["status"])
+        self.assertEqual(self.alerts.status()["alerts"][0]["sent_count"], 1)
+
     def test_preview_explains_collection_limit_and_keyword_rejections(self):
         self.verify()
         alert_id = self.save(platforms={"wanted": RULE}, max_results=1)["alerts"][0][
@@ -299,6 +337,25 @@ class JobAlertTests(unittest.TestCase):
         self.mailer.fail = False
         self.assertTrue(self.alerts.run_now({"id": alert_id})["mailed"])
 
+    def test_deadline_that_passed_during_collection_is_not_mailed(self):
+        self.verify()
+        alert_id = self.save(platforms={"wanted": RULE})["alerts"][0]["id"]
+        self.searcher.return_value = [
+            {
+                "title": "SQL",
+                "url": "https://www.wanted.co.kr/wd/55",
+                "content": "서울",
+            }
+        ]
+        self.verifier.return_value = {
+            "status": "open",
+            "deadline": "2026-10-12T08:59:59+09:00",
+        }
+        result = self.alerts.run_now({"id": alert_id})
+        self.assertFalse(result["mailed"])
+        self.assertEqual(result["collection"]["closed_before_send"], 1)
+        self.assertEqual(len(self.mailer.sent), 1)  # verification code only
+
     def test_due_schedule_catches_up_once(self):
         weekdays = {"frequency": "weekdays", "hour": 8}
         saturday = datetime(2026, 10, 17, 12, 0)
@@ -322,6 +379,7 @@ class JobAlertTests(unittest.TestCase):
             self.searcher,
             self.mailer,
             clock=lambda: self.now,
+            verifier=self.verifier,
         )
 
     def test_changes_during_search_are_honoured_before_mailing(self):
