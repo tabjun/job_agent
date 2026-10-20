@@ -82,6 +82,15 @@ class PortalBrowserTests(unittest.TestCase):
                             "suggested_save_index": 0,
                             "autosave_available": site == "wanted",
                         }
+                    if operation == "auto":
+                        # Catch waits for the person's login on the first try.
+                        if site == "catch" and sum(op == "auto" for op, _ in calls) == 1:
+                            return {"site": site, "status": "waiting_for_person", "message": "로그인하세요"}
+                        if site == "wanted":
+                            return {"site": site, "status": "needs_review", "message": "저장 버튼 불명확",
+                                    "changed_fields": [], "not_mapped": []}
+                        return {"site": site, "status": "saved_verified", "message": "verified",
+                                "changed_fields": ["summary"], "not_mapped": ["skills"]}
                     if operation == "apply":
                         assert payload["consent"]
                         assert payload["mappings"] == [
@@ -134,7 +143,18 @@ class PortalBrowserTests(unittest.TestCase):
                     self.assertEqual(calls, [])
                     page.locator("#portal-consent").check()
                     page.locator("#portal-proceed").click()
-                    expect(page.locator("#portal-status")).to_contain_text("열었습니다")
+                    expect(page.locator("#portal-status")).to_contain_text(
+                        "자동 저장을 마쳤습니다", timeout=20000
+                    )
+                    expect(
+                        page.locator('.portal-row[data-site="catch"] p')
+                    ).to_contain_text("자동 저장·확인 완료")
+                    expect(
+                        page.locator('.portal-row[data-site="wanted"] p')
+                    ).to_contain_text("확인 필요")
+                    self.assertGreaterEqual(
+                        [op for op, payload in calls if payload.get("site") == "catch"].count("auto"), 2
+                    )
                     self.assertEqual(
                         [
                             payload["site"]

@@ -438,6 +438,130 @@ class ResumeSync:
             else "일부 입력·저장이 발생했을 수 있습니다. 브라우저에서 확인하세요. 자동 재시도하지 않습니다.",
         }
 
+    async def _save_after_fields(self, site, preview, mappings):
+        """The first save control after the last mapped field, in page order.
+
+        Section editors put a save button under each section; the one that
+        follows the filled fields is that section's. Readback decides success.
+        """
+        page = preview["page"]
+        filler = FormFiller(page, [], allowed_url=lambda url: self.registry.matches_url(site, url))
+        last = None
+        for row in mappings:
+            locator = await filler._resolve_target(preview["fields"][row["target_index"]])
+            handle = await locator.element_handle()
+            if last is None or await page.evaluate(
+                "([a, b]) => !!(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING)",
+                [last, handle],
+            ):
+                last = handle
+        for index, button in enumerate(preview["buttons"]):
+            control = await page.locator(button["selector"]).element_handle()
+            if control and await page.evaluate(
+                "([a, b]) => !!(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING)",
+                [last, control],
+            ):
+                return index
+        return None
+
+    def _write_report(self, site, entry):
+        """Latest result per site plus one Markdown summary for later review."""
+        self.store.write_json(f"auto-{site}.json", entry)
+        names = {"catch": "캐치", "jobkorea": "잡코리아", "saramin": "사람인", "wanted": "원티드", "incruit": "인크루트"}
+        lines = ["# 플랫폼 이력서 자동 저장 결과", "", "사이트별 최신 실행입니다. 저장 후 다시 읽어 확인한 항목만 '확인됨'입니다.", ""]
+        for name in default_sites():
+            path = self.store.directory / f"auto-{name}.json"
+            if not path.exists():
+                continue
+            row = json.loads(path.read_text(encoding="utf-8"))
+            lines += [
+                f"## {names.get(name, name)} — {row['status_label']}",
+                f"- 바꾼 항목: {', '.join(row['changed_fields']) or '없음'}",
+                f"- 연결하지 못한 항목: {', '.join(row['not_mapped']) or '없음'}",
+                *[f"- 못 한 것: {note}" for note in row["not_done"]],
+                f"- 기존 값 백업: result/site_sync/{row['record'] or '-'}.json",
+                "",
+            ]
+        self.store.write_text("auto-report.md", "\n".join(lines))
+
+    async def auto(self, payload):
+        """Map, input, save and read back on its own once the person is logged in.
+
+        The person only signs in (and completes 2FA/security checks) in the
+        dedicated browser. Nothing is submitted, published or consented to; a
+        save that cannot be read back is left as 'needs_review', never retried.
+        """
+        site = self._site(payload)
+        if site not in self.contexts:
+            await self.open(payload)
+        state = await self.status(payload)
+        if state["status"] == "open_editor":
+            # Logged in but elsewhere (e.g. the resume list): go to the editor.
+            await self._page(site).goto(
+                self.registry.target(site)["candidate_urls"][0],
+                wait_until="domcontentloaded",
+                timeout=30000,
+            )
+            state = await self.status(payload)
+        if state["status"] != "editor_candidate":
+            return {"site": site, "status": "waiting_for_person", "message": state["message"]}
+        preview = await self.capture(payload)
+        mappings = preview["saved_mappings"] or preview["suggested_mappings"]
+        mapped = {row["field_id"] for row in mappings}
+        entry = {
+            "site": site,
+            "url": preview["url"],
+            "changed_fields": [],
+            "not_mapped": [
+                row["id"]
+                for row in preview["profile_fields"]
+                if row["value"].strip() and row["id"] not in mapped
+            ],
+            "not_done": [
+                "반복 행(경력·프로젝트·학력 항목 추가)은 자동으로 만들지 않고 기존 입력칸만 갱신했습니다.",
+                "지원서 제출·공개 설정·동의 체크는 하지 않습니다.",
+            ],
+            "record": None,
+            "backup": [],
+        }
+        request = {"site": site, "nonce": preview["nonce"], "consent": True, "mappings": mappings}
+        if "profile" in payload:
+            request["profile"] = payload["profile"]
+        if preview["autosave_available"]:
+            request["autosave"] = True
+        else:
+            index = preview["saved_save_index"]
+            if index is None and mappings:
+                index = await self._save_after_fields(site, self.previews[site], mappings)
+            request["save_index"] = index
+        if not mappings or (not request.get("autosave") and request["save_index"] is None):
+            entry.update(
+                status="needs_review",
+                status_label="확인 필요",
+                message="연결할 입력칸이나 저장 버튼을 확실히 찾지 못해 입력하지 않았습니다.",
+            )
+            self._write_report(site, entry)
+            return entry
+        result = await self.apply(request)
+        record = json.loads(
+            (self.store.directory / f"{result['id']}.json").read_text(encoding="utf-8")
+        )
+        verified = result["status"] == "saved_verified"
+        entry.update(
+            status="saved_verified" if verified else "needs_review",
+            status_label="저장·확인됨" if verified else "확인 필요",
+            message=result["message"],
+            changed_fields=result["changed_fields"] if verified else [],
+            record=result["id"],
+            backup=record["backup"],
+        )
+        if not verified:
+            entry["not_done"].insert(
+                0, "저장 후 다시 읽은 값이 달라 확인 필요로 남겼습니다(자동 재시도 없음)."
+            )
+        self._write_report(site, entry)
+        return entry
+
     async def close(self):
         for session in self.sessions.values():
             await session.__aexit__(None, None, None)

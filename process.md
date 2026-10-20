@@ -22,7 +22,7 @@
 
 - `#prepare`: 5개 플랫폼 다중 체크/진행. 회사 자체 JSON 변환은 접힌 고급 기능이다.
 - 공개 웹→본인 PC popup에 이력서/선택 목록만 승인 전달. exact origin/opener/request ID/사이트 allowlist 유지; 쿠키/OTP/API 권한 전달 금지.
-- 로컬 재검수 후 진행 → 전용 브라우저 열기·상태 확인 → 로그인/MFA → 사이트별 검수·저장. persistent profile만 재사용, 명확한 단일 일치/성공 연결 선제안 후 별도 승인·readback.
+- (2026-10-21) 로컬 재검수 후 진행 → 전용 브라우저 열기 → 로그인/MFA(사람) → 사이트별 자동 연결·백업·입력·저장·readback → `result/site_sync/auto-report.md` 사후 검토. 이전 방식: 사이트별 검수·저장. persistent profile만 재사용, 명확한 단일 일치/성공 연결 선제안 후 별도 승인·readback.
 - 선택 프로필/공통 원본 digest 변화는 stale preview 차단. 원본 보존, 불확실 저장 자동 재시도 금지.
 
 ## 첫 화면과 작업 흐름 (2026-10-08)

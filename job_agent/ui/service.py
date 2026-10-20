@@ -124,7 +124,7 @@ class WorkspaceService:
                 "임시 작업 공간에서는 실제 사이트 저장을 실행하지 않습니다."
             )
         operation = payload.get("operation")
-        if operation not in {"open", "status", "capture", "apply", "close_site"}:
+        if operation not in {"open", "status", "capture", "apply", "auto", "close_site"}:
             raise ValueError("잘못된 사이트 동작입니다.")
         if self._sync_worker is None:
             from job_agent.browser.sync import ResumeSync, SyncWorker

@@ -1,3 +1,9 @@
+## 플랫폼 저장 자동화·공통 이력서 최신화 (2026-10-21, 최신, Claude)
+
+- 사이트 저장은 이제 로그인 후 자동(`ResumeSync.auto`, UI 동의 한 번). 결과는 `result/site_sync/auto-report.md`로 사후 검토. 반복 행(경력·프로젝트 추가)은 자동 생성하지 않음 → 사이트별로 기존 칸만 갱신.
+- profile.json은 최신 이력서.md 기준으로 재작성(백업 profile.backup_20261021.json). 자기소개서 비움.
+- 남은 일: 사용자 확인 후 5개 사이트 실제 실행(전용 브라우저 로그인 필요), 결과 보고서 공유. 공개 Vercel 배포 안 함.
+
 ## 시트 전체 저장·메일 30건 + Codex 지적 반영 (2026-10-21 새벽, 최신, Claude)
 
 - 사용자: 배포 구조 유지, 조건 통과 공고 전체는 구글 시트, 메일은 30건 상한. 구현 완료(`alerts/sheet.py`, `deploy/sheets/job_alerts.gs`). **사용자가 할 일**: 시트 만들기 → Apps Script 붙여 넣기 → 스크립트 속성 `SHEET_TOKEN` → 웹 앱 배포 → `.env`에 `ALERT_SHEET_URL`·`ALERT_SHEET_TOKEN` (docs/job_alerts.md 4절). 설정 전에는 시트 단계만 건너뜀.
