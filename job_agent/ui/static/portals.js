@@ -21,7 +21,7 @@
       const title = document.createElement("strong"); title.textContent = names[site];
       const state = document.createElement("p"); state.textContent = "연결 대기 · 아직 입력·저장하지 않았습니다";
       const button = document.createElement("button"); button.type = "button"; button.className = "text-button";
-      const icon = document.createElement("i"); icon.dataset.lucide = "scan-text"; button.append(icon, document.createTextNode("검수·저장"));
+      const icon = document.createElement("i"); icon.dataset.lucide = "scan-text"; button.append(icon, document.createTextNode("직접 검수"));
       button.hidden = !config.local_owner;
       button.addEventListener("click", () => preview(site));
       article.append(title, state, button); $("#portal-queue").append(article);
@@ -42,9 +42,33 @@
           update(site, result.message);
         } catch (error) { update(site, error.message); }
       }
-      $("#portal-status").textContent = `${opened}/${sites.length}개 사이트의 전용 브라우저를 열었습니다. 각 사이트의 연결 상태를 확인하고 로그인·2차 인증 후 기존 이력서 수정 화면에서 검수·저장을 진행하세요. 이 단계에서는 이력서를 입력하거나 저장하지 않습니다.`;
-    } catch (error) { notice(error.message); }
+      $("#portal-status").textContent = `${opened}/${sites.length}개 사이트의 전용 브라우저를 열었습니다. 각 창에서 로그인·2차 인증만 하면 나머지(항목 연결·입력·저장·다시 읽어 확인)는 자동으로 진행합니다. 결과는 result/site_sync/auto-report.md에 남고, 나중에 보고 고치면 됩니다.`;
+    } catch (error) { notice(error.message); return; }
     finally { setWorking(false); }
+    await autoSave(sites);
+  }
+  // Retry each site until the person has logged in there; save once per site.
+  async function autoSave(sites) {
+    const pending = new Set(sites);
+    const started = Date.now();
+    while (pending.size && Date.now() - started < 20 * 60 * 1000) {
+      for (const site of [...pending]) {
+        if (working) break;
+        try {
+          setWorking(true);
+          const result = await api("/api/sync", {operation: "auto", site, profile: selectedProfile});
+          if (result.status === "waiting_for_person") { update(site, `로그인 대기 · ${result.message}`); continue; }
+          pending.delete(site);
+          update(site, result.status === "saved_verified"
+            ? `자동 저장·확인 완료 · ${result.changed_fields.join(", ")}${result.not_mapped.length ? ` · 연결 못 한 항목 ${result.not_mapped.length}개` : ""}`
+            : `확인 필요 · ${result.message}`);
+        } catch (error) { pending.delete(site); update(site, `확인 필요 · ${error.message}`); }
+        finally { setWorking(false); }
+      }
+      if (pending.size) await new Promise(resolve => setTimeout(resolve, 4000));
+    }
+    for (const site of pending) update(site, "로그인을 기다리다 멈췄습니다 · 다시 진행하면 이어서 저장합니다");
+    $("#portal-status").textContent = "자동 저장을 마쳤습니다. 사이트별 결과는 result/site_sync/auto-report.md에서 확인하고 필요한 부분만 사이트에서 고치세요.";
   }
   async function preview(site) {
     if (working) return;
@@ -68,7 +92,7 @@
       if (working) return;
       const sites = checkedSites();
       if (!sites.length) throw new Error("진행할 플랫폼을 하나 이상 선택하세요.");
-      if (!$("#portal-consent").checked) throw new Error("본인 PC 연결·브라우저 열기에 동의하세요. 실제 저장은 별도로 검수·승인합니다.");
+      if (!$("#portal-consent").checked) throw new Error("본인 PC 연결·자동 입력·저장에 동의하세요. 로그인·2차 인증은 직접 합니다.");
       selectedProfile = getProfile(); choose(sites);
       if (config.local_owner) { connect(sites); return; }
       $("#platform-site").value = sites[0];

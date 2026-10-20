@@ -398,6 +398,94 @@ class SyncTests(unittest.IsolatedAsyncioTestCase):
                 thread.join()
 
 
+class AutoSyncTests(unittest.IsolatedAsyncioTestCase):
+    """After the person logs in, mapping, input, save and readback run alone."""
+
+    def profile(self, **values):
+        fields = []
+        for key, value in {"summary": "Auto fact", "skills": "SQL", **values}.items():
+            fields.append(
+                {
+                    "id": key,
+                    "label": key,
+                    "value": value,
+                    "reviewed": True,
+                    "evidence": [
+                        {"source_id": "fixture", "paragraph_index": 0, "text": value}
+                    ],
+                }
+            )
+        return {"format": FORMAT, "fields": fields}
+
+    async def run_engine(self, check):
+        with tempfile.TemporaryDirectory() as folder:
+            server = ThreadingHTTPServer(("127.0.0.1", 0), FixtureHandler)
+            server.value, server.submissions = "old", 0
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            url = f"http://127.0.0.1:{server.server_port}/"
+            profile = self.profile()
+            engine = ResumeSync(
+                ProjectPaths(Path(folder)),
+                lambda: profile,
+                registry=FixtureRegistry(url),
+                headed=False,
+                editor_check=lambda site, url: True,
+            )
+            try:
+                await check(engine, server)
+            finally:
+                await engine.close()
+                server.shutdown()
+                server.server_close()
+                thread.join()
+
+    async def test_auto_saves_verifies_and_reports_without_a_button_press(self):
+        async def check(engine, server):
+            result = await engine.auto({"site": "saramin"})
+            self.assertEqual(result["status"], "saved_verified")
+            self.assertEqual(server.value, "Auto fact")
+            self.assertEqual(server.submissions, 0)  # never the apply button
+            self.assertEqual(result["changed_fields"], ["summary"])
+            self.assertIn("skills", result["not_mapped"])
+            report = json.loads(
+                (engine.store.directory / "auto-saramin.json").read_text("utf-8")
+            )
+            self.assertEqual(report["status"], "saved_verified")
+            self.assertEqual(report["backup"][0]["before"], "old")
+            self.assertTrue(any("반복" in note for note in report["not_done"]))
+            summary = (engine.store.directory / "auto-report.md").read_text("utf-8")
+            self.assertIn("사람인", summary)
+
+        await self.run_engine(check)
+
+    async def test_auto_waits_for_the_person_to_log_in(self):
+        async def check(engine, server):
+            await engine.open({"site": "jobkorea"})
+            page = engine.contexts["jobkorea"].pages[0]
+            await page.set_content('<input type="password">')
+            result = await engine.auto({"site": "jobkorea"})
+            self.assertEqual(result["status"], "waiting_for_person")
+            self.assertIn("로그인", result["message"])
+            self.assertEqual(server.value, "old")
+            self.assertFalse(engine.store.directory.exists())
+
+        await self.run_engine(check)
+
+    async def test_failed_readback_is_left_for_review_not_retried(self):
+        async def check(engine, server):
+            # Wanted saves on blur; this fixture does not, so readback fails.
+            result = await engine.auto({"site": "wanted"})
+            self.assertEqual(result["status"], "needs_review")
+            self.assertEqual(server.value, "old")
+            report = json.loads(
+                (engine.store.directory / "auto-wanted.json").read_text("utf-8")
+            )
+            self.assertEqual(report["status"], "needs_review")
+
+        await self.run_engine(check)
+
+
 class WorkerTests(unittest.TestCase):
     def test_native_select_exact_label_conversion_without_guessing(self):
         target = {

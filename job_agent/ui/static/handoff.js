@@ -4,7 +4,7 @@
   const status = text => { $("#device-status").textContent = text; };
   function route() {
     const name = $("#platform-site").selectedOptions[0]?.textContent || "사이트";
-    $("#platform-route").textContent = `${name}: 전용 브라우저 로그인 → 2차 인증 완료 → 이력서 관리에서 기존 이력서 수정 → 필드 검수·저장`;
+    $("#platform-route").textContent = `${name}: 전용 브라우저 로그인 → 2차 인증 완료 → 자동 입력·저장·재접속 확인 → 결과 보고서 검토`;
   }
   window.addEventListener("workspace-ready", () => {
     $("#platform-site").replaceChildren(...[...$("#sync-site").options].map(option => option.cloneNode(true)));
