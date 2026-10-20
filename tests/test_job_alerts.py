@@ -312,6 +312,81 @@ class JobAlertTests(unittest.TestCase):
         self.assertFalse(result["mailed"])
         self.assertEqual(len(self.mailer.sent), 1)  # verification only
 
+    def test_open_posting_without_apply_button_is_mailed_with_label(self):
+        self.verify()
+        alert_id = self.save(platforms={"wanted": RULE})["alerts"][0]["id"]
+        self.searcher.return_value = [
+            {
+                "title": "데이터 분석가 SQL",
+                "url": "https://www.wanted.co.kr/wd/21",
+                "content": "서울",
+            }
+        ]
+        self.verifier.return_value = {
+            **self.confirmed,
+            "application_available": False,
+            "deadline": "2026-11-30",
+        }
+        result = self.alerts.run_now({"id": alert_id})
+        self.assertTrue(result["mailed"])
+        self.assertEqual(result["collection"]["application_unconfirmed"], 1)
+        self.assertIn("지원 버튼 미확인", self.mailer.sent[-1][2])
+        self.assertIn("지원 버튼 미확인", self.mailer.html[-1])
+
+    def test_detail_budget_skips_unsupported_urls_and_checks_likely_jobs_first(self):
+        from job_agent.core.job_status import detail_url
+
+        self.verify()
+        alerts = JobAlerts(
+            ProjectPaths(Path(self.folder.name)),
+            self.searcher,
+            self.mailer,
+            clock=lambda: self.now,
+            verifier=self.verifier,
+            supported=detail_url,
+        )
+        alert_id = self.save(
+            target=alerts, platforms={"catch": {**RULE, "keywords": ""}}
+        )["alerts"][0]["id"]
+        self.searcher.return_value = [
+            {
+                "title": "카페 행사 데이터 분석",
+                "url": "https://www.catch.co.kr/CatchCafe/LiveFair/1",
+                "content": "서울",
+            },
+            {
+                "title": "보험 영업 채용",
+                "url": "https://www.catch.co.kr/NCS/RecruitInfoDetails/2",
+                "content": "서울",
+            },
+            {
+                "title": "데이터 분석가",
+                "url": "https://www.catch.co.kr/NCS/RecruitInfoDetails/3",
+                "content": "서울",
+            },
+        ]
+        with patch.object(JobAlerts, "DETAIL_BUDGET", 1):
+            result = alerts.run_now({"id": alert_id, "send": False})
+        checked = [call.args[0] for call in self.verifier.call_args_list]
+        self.assertEqual(checked, ["https://www.catch.co.kr/NCS/RecruitInfoDetails/3"])
+        self.assertEqual(result["collection"]["unsupported_detail_url"], 1)
+        self.assertEqual(result["collection"]["detail_not_checked"], 1)
+        trace = json.loads(
+            (Path(self.folder.name) / "result/job_alerts/runs" / f"{alert_id}.json")
+            .read_text(encoding="utf-8")
+        )
+        outcomes = {row["url"].rsplit("/", 1)[1]: row["outcome"] for row in trace["candidates"]}
+        self.assertEqual(
+            outcomes,
+            {"1": "unsupported_detail_url", "2": "detail_not_checked", "3": "selected"},
+        )
+        stored = json.loads(
+            (Path(self.folder.name) / "result/job_alerts/alerts.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        self.assertNotIn("candidates", json.dumps(stored))
+
     def test_full_text_keyword_evidence_survives_short_summary(self):
         self.verify()
         alert_id = self.save(platforms={"wanted": RULE})["alerts"][0]["id"]

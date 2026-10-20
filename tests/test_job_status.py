@@ -139,6 +139,98 @@ class PostingStatusTests(unittest.TestCase):
         )
         self.assertEqual(detail_status(html, URL, NOW)["status"], "closed")
 
+    def test_platform_apply_labels_share_one_pattern(self):
+        page = "<h1>데이터 분석가</h1><p>마감일 2026.11.30</p>"
+        for label in ["바로지원", "인크루트 지원", "즉시 지원", "입사지원", "홈페이지 지원"]:
+            with self.subTest(label=label):
+                row = detail_status(page + f"<button>{label}</button>", URL, NOW)
+                self.assertTrue(row["application_available"])
+        for label in ["지원자 통계 보기", "식대지원", "입사지원 현황"]:
+            with self.subTest(label=label):
+                row = detail_status(page + f"<a>{label}</a>", URL, NOW)
+                self.assertFalse(row["application_available"])
+
+    def test_recommended_posting_buttons_are_not_this_postings_apply_path(self):
+        html = (
+            "<h1>데이터 분석가</h1><p>마감일 2026.11.30</p>"
+            "<h2>추천 공고</h2><p>다른 공고</p><button>지원하기</button>"
+        )
+        self.assertFalse(detail_status(html, URL, NOW)["application_available"])
+
+    def test_wanted_embedded_page_data_supplies_status_and_conditions(self):
+        wanted = "https://www.wanted.co.kr/wd/376628"
+
+        def page(**fields):
+            data = {
+                "id": 376628,
+                "status": "active",
+                "due_time": None,
+                "hidden": False,
+                "position": "[Data팀] Data Analyst",
+                "company": {"company_name": "가상기업"},
+                "career": {"annual_from": 1, "annual_to": 5, "is_newbie": False},
+                "address": {
+                    "location": "서울",
+                    "district": "강남구",
+                    "full_location": "서울 강남구 테헤란로",
+                },
+                **fields,
+            }
+            script = json.dumps({"props": {"pageProps": {"initialData": data}}})
+            return (
+                f'<script id="__NEXT_DATA__" type="application/json">{script}</script>'
+                "<h1>[Data팀] Data Analyst</h1><p>주요업무 SQL</p>"
+            )
+
+        row = detail_status(page(), wanted, NOW)
+        self.assertEqual(row["status"], "open")
+        self.assertEqual(row["evidence"], "wanted_active")
+        self.assertIn("서울 강남구", row["job_location"])
+        self.assertEqual(
+            (row["experience"]["min_years"], row["experience"]["max_years"]), (1, 5)
+        )
+        self.assertEqual(row["company"], "가상기업")
+        row = detail_status(page(due_time="2026-11-30"), wanted, NOW)
+        self.assertEqual((row["status"], row["deadline"]), ("open", "2026-11-30"))
+        for fields in [{"status": "close"}, {"due_time": "2026-10-01"}]:
+            with self.subTest(fields=fields):
+                self.assertEqual(
+                    detail_status(page(**fields), wanted, NOW)["status"], "closed"
+                )
+        entry = detail_status(
+            page(career={"annual_from": 0, "annual_to": 0, "is_newbie": True}),
+            wanted,
+            NOW,
+        )
+        self.assertEqual(entry["experience"]["kind"], "entry")
+        # Another posting's data never confirms this one.
+        other = detail_status(page(id=1), wanted, NOW)
+        self.assertNotEqual(other.get("evidence"), "wanted_active")
+
+    def test_same_posting_redirect_is_followed_once(self):
+        requests = []
+        target = "https://www.catch.co.kr/NCS/RecruitInfoDetails/123"
+
+        def handle(request):
+            requests.append(str(request.url))
+            if "lang=ko" not in str(request.url):
+                return httpx.Response(302, headers={"location": target + "?lang=ko"})
+            return httpx.Response(
+                200,
+                headers={"content-type": "text/html"},
+                text="<h1>데이터 분석가</h1><p>마감일 : 2026-11-30</p>",
+            )
+
+        original = httpx.Client
+        with patch(
+            "job_agent.core.job_status.httpx.Client",
+            side_effect=lambda **kw: original(
+                transport=httpx.MockTransport(handle), **kw
+            ),
+        ):
+            self.assertEqual(verify_posting(target, NOW)["status"], "open")
+        self.assertEqual(requests, [target, target + "?lang=ko"])
+
     def test_shared_rejection_normalizes_structured_deadlines(self):
         for key, value in [
             ("deadline", "2026.07.17"),

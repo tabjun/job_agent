@@ -14,6 +14,7 @@ import httpx
 
 from job_agent.core.job_match import experience
 from job_agent.core.postings import (
+    APPLY_LABEL,
     DATE_VALUE,
     canonical_url,
     closed_text,
@@ -40,6 +41,7 @@ class Detail(HTMLParser):
         super().__init__(convert_charrefs=True)
         self.scripts, self.visible, self.meta = [], [], []
         self.script, self.skip = None, None
+        self.next_data, self.next_script = None, False
         self.heading, self.headings = False, []
         self.control, self.controls = None, []
         self.in_head = False
@@ -52,13 +54,19 @@ class Detail(HTMLParser):
         if tag in {"h2","h3"}:
             self.section = (tag,len(self.visible),[])
         if tag in {"a", "button"}:
-            self.control = (tag, attrs, [])
+            # Remember where the control sits so recommendation areas can be cut.
+            self.control = (tag, attrs, [], len(self.visible))
         if tag == "h1":
             self.heading = True
         if tag == "script":
             self.skip = tag
+            # Wanted renders with JavaScript but embeds the posting in __NEXT_DATA__.
+            self.next_script = attrs.get("id") == "__NEXT_DATA__"
             self.script = (
-                [] if attrs.get("type", "").lower() == "application/ld+json" else None
+                []
+                if self.next_script
+                or attrs.get("type", "").lower() == "application/ld+json"
+                else None
             )
         elif tag in {"style", "noscript"}:
             self.skip = tag
@@ -79,9 +87,11 @@ class Detail(HTMLParser):
         if tag == "h1":
             self.heading = False
         if tag == self.skip:
-            if self.script is not None:
+            if self.script is not None and self.next_script:
+                self.next_data = "".join(self.script)
+            elif self.script is not None:
                 self.scripts.append("".join(self.script))
-            self.script, self.skip = None, None
+            self.script, self.skip, self.next_script = None, None, False
 
     def handle_data(self, data):
         if self.control and not self.skip:
@@ -135,6 +145,76 @@ def _expiry(value):
     return datetime.combine(day, time.max, KST)
 
 
+def _wanted_posting(raw, url):
+    """The page's own posting from Wanted __NEXT_DATA__, or None."""
+    identity = re.fullmatch(r"https://www\.wanted\.co\.kr/wd/(\d+)", url)
+    if not raw or not identity:
+        return None
+    try:
+        data = json.loads(raw)["props"]["pageProps"]["initialData"]
+    except (ValueError, KeyError, TypeError, RecursionError):
+        return None
+    if not isinstance(data, dict) or str(data.get("id")) != identity[1]:
+        return None
+    return data
+
+
+def _wanted_details(data):
+    """Only the fields Wanted actually states; missing ones stay unset."""
+    details = {}
+    career = data.get("career") if isinstance(data.get("career"), dict) else {}
+    low, high = career.get("annual_from"), career.get("annual_to")
+    newbie = career.get("is_newbie") is True
+    if newbie and not high:
+        details["experience"] = {"kind": "entry", "evidence": "원티드 신입"}
+    elif type(low) is int and (high is None or type(high) is int):
+        details["experience"] = {
+            "kind": "years",
+            "min_years": 0 if newbie else low,
+            # Wanted stores an open upper bound as a large number.
+            "max_years": high if high is not None and high < 30 else None,
+            "evidence": f"원티드 경력 {low}~{high}년",
+        }
+    address = data.get("address") if isinstance(data.get("address"), dict) else {}
+    location = str(
+        address.get("full_location")
+        or f"{address.get('location') or ''} {address.get('district') or ''}"
+    ).strip()
+    company = data.get("company") if isinstance(data.get("company"), dict) else {}
+    for key, value in [
+        ("job_location", location),
+        ("job_title", str(data.get("position") or "").strip()),
+        ("company", str(company.get("company_name") or "").strip()),
+    ]:
+        if value:
+            details[key] = value
+    return details
+
+
+def _apply_controls(parser):
+    """Active and disabled apply controls of this posting, not recommended ones."""
+    end = parser.recommendation_index
+    labelled = [
+        attrs
+        for _, attrs, parts, position in parser.controls
+        if (end is None or position < end)
+        and re.fullmatch(APPLY_LABEL, " ".join(" ".join(parts).split()))
+    ]
+    disabled = [
+        attrs
+        for attrs in labelled
+        if "disabled" in attrs or attrs.get("aria-disabled") == "true"
+    ]
+    active = [
+        attrs
+        for attrs in labelled
+        if attrs not in disabled
+        and attrs.get("aria-hidden") != "true"
+        and "display:none" not in attrs.get("style", "").replace(" ", "")
+    ]
+    return active, disabled
+
+
 def detail_status(html, url, now):
     """Closed evidence wins even when a generic '채용 시 마감' also appears."""
     now = now.replace(tzinfo=KST) if now.tzinfo is None else now.astimezone(KST)
@@ -154,7 +234,8 @@ def detail_status(html, url, now):
     ]
     if not matching and len(postings) == 1 and not postings[0].get("url"):
         matching = postings
-    if postings and not matching:
+    wanted = _wanted_posting(parser.next_data, url)
+    if postings and not matching and not wanted:
         return {"status": "unknown", "evidence": "unmatched_job_schema"}
     job = matching[0] if matching else {}
     heading = str(job.get("title") or " ".join(parser.headings)).strip()
@@ -227,34 +308,11 @@ def detail_status(html, url, now):
         else "",
         "job_description": body[:12000],
     }
-    apply_controls = [
-        attrs
-        for _, attrs, parts in parser.controls
-        if re.fullmatch(
-            r"(?:홈페이지|간편|즉시|온라인)?\s*(?:입사)?지원(?:하기|서\s*작성)?",
-            " ".join(" ".join(parts).split()),
-        )
-        and "disabled" not in attrs
-        and attrs.get("aria-disabled") != "true"
-        and attrs.get("aria-hidden") != "true"
-        and "display:none" not in attrs.get("style", "").replace(" ", "")
-    ]
+    apply_controls, disabled = _apply_controls(parser)
     details["application_available"] = bool(apply_controls)
-    details["application_blocked"] = (
-        any(
-            re.fullmatch(
-                r"(?:홈페이지|간편|즉시|온라인)?\s*(?:입사)?지원(?:하기|서\s*작성)?",
-                " ".join(" ".join(parts).split()),
-            )
-            and ("disabled" in attrs or attrs.get("aria-disabled") == "true")
-            for _, attrs, parts in parser.controls
-        )
-        and not apply_controls
-    )
+    details["application_blocked"] = bool(disabled) and not apply_controls
     details["application_evidence"] = (
-        "공개 원문에 활성 지원 버튼/링크 표시"
-        if apply_controls
-        else "활성 지원 경로 미확인"
+        "공개 원문에 활성 지원 버튼/링크 표시" if apply_controls else "지원 버튼 미확인"
     )
     values = [p.get("validThrough") for p in matching]
     # Metadata can expose deadlines when the body requires JavaScript.
@@ -262,6 +320,30 @@ def detail_status(html, url, now):
     parsed = [(value, _expiry(value)) for value in values if value]
     if any(end and end < now for _, end in parsed):
         return {"status": "closed", "evidence": "detail_deadline"}
+    if wanted:
+        details.update(_wanted_details(wanted))
+        if wanted.get("status") == "close":
+            return {"status": "closed", "evidence": "wanted_closed"}
+        if wanted.get("status") != "active" or wanted.get("hidden") is True:
+            return {"status": "unknown", "evidence": "wanted_status_unknown"}
+        if wanted.get("due_time"):
+            expiry = _expiry(wanted["due_time"])
+            if expiry is None:
+                return {"status": "unknown", "evidence": "invalid_deadline"}
+            if expiry < now:
+                return {"status": "closed", "evidence": "detail_deadline"}
+            return {
+                "status": "open",
+                "evidence": "wanted_active",
+                "deadline": str(wanted["due_time"]),
+                **details,
+            }
+        return {
+            "status": "open",
+            "evidence": "wanted_active",
+            "period": "상시 채용 (원문 확인)",
+            **details,
+        }
     # Invalid/conflicting structured dates must not become an open confirmation.
     if any(end is None for _, end in parsed):
         return {"status": "unknown", "evidence": "invalid_deadline"}
@@ -339,14 +421,21 @@ def verify_posting(url, now):
                 client.cookies.clear()
                 with client.stream("GET", target) as response:
                     if response.status_code in {301, 302, 303, 307, 308}:
-                        target = detail_url(
-                            urljoin(target, response.headers.get("location", ""))
+                        # Follow only a redirect to the same posting (e.g. an
+                        # added language query) and request it as given; the
+                        # normalised URL would just repeat the redirect.
+                        location = urljoin(
+                            target, response.headers.get("location", "")
                         )
-                        if target != original:
+                        if (
+                            urlsplit(location).scheme != "https"
+                            or detail_url(location) != original
+                        ):
                             return {
                                 "status": "unknown",
                                 "evidence": "redirected_detail",
                             }
+                        target = location
                         continue
                     if response.status_code in {404, 410}:
                         return {"status": "closed", "evidence": "detail_removed"}
