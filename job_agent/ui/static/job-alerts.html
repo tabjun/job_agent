@@ -1,0 +1,25 @@
+<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>맞춤 공고 메일 · Resume Workspace</title><link rel="stylesheet" href="/subscription.css">
+<script defer src="/lucide.min.js"></script><script defer src="/subscription.js"></script></head>
+<body><main><header><a href="/">← Resume Workspace</a><h1><i data-lucide="mail"></i>맞춤 공고 메일</h1>
+<p>이메일과 검색 조건을 등록하면 서비스 서버가 공고를 찾아 보내드립니다. PC를 켜둘 필요가 없습니다.</p></header>
+<div class="steps" aria-label="구독 순서"><span><i data-lucide="shield-check"></i>1. 이메일 인증</span><span><i data-lucide="sliders-horizontal"></i>2. 조건 등록</span><span><i data-lucide="send"></i>3. 서버 예약 발송</span></div>
+<p id="service-state" role="status">서버 연결 상태 확인 중…</p><p id="notice" role="status" aria-live="polite"></p>
+<section id="unsubscribe" hidden><h2>메일 수신 해지</h2><p>이 알림의 예약 발송을 중지합니다. 링크를 여는 것만으로는 해지되지 않습니다.</p><button id="unsubscribe-confirm">수신 해지</button></section>
+<section><h2><i data-lucide="shield-check"></i>이메일 인증</h2><form id="code-form"><label>이메일<input id="email" type="email" required autocomplete="email" maxlength="254"></label><label class="check"><input id="auth-consent" type="checkbox" required>인증을 위해 이메일을 인증 서비스에 전달하고 인증 계정을 생성하는 데 동의합니다.</label><button id="request-code">인증 코드 받기</button></form>
+<form id="verify-form"><label>메일의 인증 코드<input id="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6,8}" required maxlength="8"></label><button>인증하고 내 구독 보기</button></form>
+<p>인증 상태는 이 탭에서만 유지합니다. 새로 접속하면 다시 인증하세요.</p></section>
+<section id="conditions" hidden><h2><i data-lucide="sliders-horizontal"></i>맞춤 조건</h2><form id="subscription-form">
+<label>알림 이름<input id="name" maxlength="60" value="데이터·AI 맞춤 공고" required></label>
+<label>직무<input id="role" maxlength="100" value="데이터 분석가, 데이터 사이언티스트, 머신러닝, AI, 통계" required></label>
+<div class="grid"><label>근무지역<input id="location" maxlength="100" value="서울, 경기" required></label><label>경력<select id="experience"><option value="early">신입·경력무관·1~5년</option><option value="all">연차 제한 없음</option></select></label></div>
+<div class="grid"><label>관심 키워드<input id="keywords" maxlength="300" value="데이터, 분석, 머신러닝, AI, 통계, Python, SQL"></label><label>제외 키워드<input id="exclude" maxlength="300" placeholder="원하지 않는 업무"></label></div>
+<fieldset><legend>채용 플랫폼</legend><div id="platforms"></div></fieldset>
+<div class="grid"><label>주기<select id="frequency"><option value="daily">매일</option><option value="weekdays" selected>평일</option><option value="weekly">매주 월요일</option></select></label><label>발송 시작 시간 (한국 시간)<select id="hour"><option value="8">오전 8시 이후</option><option value="12">낮 12시 이후</option><option value="18">오후 6시 이후</option></select></label><label>메일당 최대 공고<input id="max-results" type="number" min="1" max="30" value="30" required></label></div>
+<p>예약 시각 이후 순차 발송합니다. 원문 확인 실패·조건 미확인은 보류하며, 선택한 수보다 적게 올 수 있습니다. ‘새 공고’는 이 구독에서 처음 발송하는 공고입니다.</p>
+<label class="check"><input id="search-consent" type="checkbox" required>검색 조건을 공고 검색 서비스에 전송하는 데 동의합니다.</label>
+<label class="check"><input id="storage-consent" type="checkbox" required>이메일·구독 조건·발송 기록의 서버 저장 및 예약 발송에 동의합니다. 이력서는 저장하지 않습니다.</label>
+<button id="save-subscription"><i data-lucide="save"></i>서버 구독 저장</button><button id="reset" type="button" class="secondary">새 구독 작성</button></form></section>
+<section id="subscriptions" hidden><h2><i data-lucide="calendar-clock"></i>내 구독</h2><div id="subscription-list"></div><button id="delete-account" class="secondary">내 인증 계정·구독 정보 삭제</button></section>
+<footer><h2>개인정보와 발송 안내</h2><p>이메일 인증과 구독 저장은 Supabase, 공고 검색은 검색 제공자, 발송은 서비스에 설정한 메일 제공자를 이용합니다. 구독 정보는 계정 삭제까지, 발송 내용·작업 기록은 14일, 재발송 방지 URL은 구독당 최근 1,000개를 보관합니다. 수신 해지는 발송 중지이며 계정 삭제와 별개입니다. 이미 메일 제공자에 전달된 메일은 취소할 수 없습니다.</p><p>접수 중이라는 원문 표기와 활성 지원 버튼/링크를 확인합니다. 최종 지원 가능 여부·기업의 변경된 조건은 지원 전에 다시 확인하세요. 회사 공식 채용 시스템의 최종 제출까지 검증하거나 지원하지 않습니다.</p></footer>
+</main></body></html>

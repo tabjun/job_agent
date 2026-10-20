@@ -34,7 +34,10 @@
         const label = element("label", "", caption); const input = element("input"); input.id = `alert-${key}-${field}`; input.dataset.field = field; input.maxLength = field === "role" || field === "location" ? 100 : 300; input.placeholder = hint;
         label.append(input); grid.append(label);
       }
-      box.addEventListener("change", () => { grid.setAttribute("aria-disabled", String(!box.checked)); grid.querySelectorAll("input").forEach(input => { input.disabled = !box.checked; }); });
+      const careerLabel = element("label", "", "경력 조건"); const career = element("select"); career.id = `alert-${key}-experience`;
+      for (const [value, text] of [["early", "신입·경력무관·1~5년"], ["all", "연차 제한 없음"]]) { const option = element("option", "", text); option.value = value; career.append(option); }
+      careerLabel.append(career); grid.append(careerLabel);
+      box.addEventListener("change", () => { grid.setAttribute("aria-disabled", String(!box.checked)); grid.querySelectorAll("input,select").forEach(input => { input.disabled = !box.checked; }); });
       row.append(toggle, grid); holder.append(row);
       box.dispatchEvent(new Event("change"));
     }
@@ -48,6 +51,7 @@
       const rule = alert?.platforms[row.dataset.site];
       const box = row.querySelector("input[type=checkbox]"); box.checked = Boolean(rule); box.dispatchEvent(new Event("change"));
       row.querySelectorAll("input[data-field]").forEach(input => { input.value = rule?.[input.dataset.field] || ""; });
+      row.querySelector("select").value = rule && rule.experience === null ? "all" : "early";
     }
     $("#alert-frequency").value = alert?.schedule.frequency || "weekdays";
     $("#alert-hour").value = String(alert?.schedule.hour ?? 8);
@@ -134,6 +138,7 @@
     for (const row of document.querySelectorAll(".alert-platform")) {
       if (!row.querySelector("input[type=checkbox]").checked) continue;
       const rule = {}; row.querySelectorAll("input[data-field]").forEach(input => { rule[input.dataset.field] = input.value.trim(); });
+      rule.experience = row.querySelector("select").value === "all" ? null : {entry:true, any:true, min_years:1, max_years:5};
       platforms[row.dataset.site] = rule;
     }
     return {
@@ -170,6 +175,7 @@
     const origin = rows.find(row => values(row).some(Boolean));
     if (rows.length < 2 || !origin) { notice("조건을 입력한 플랫폼과 복사할 플랫폼을 함께 선택하세요."); return; }
     const source = values(origin);
+    for (const row of rows) row.querySelector("select").value = origin.querySelector("select").value;
     for (const row of rows) if (row !== origin) row.querySelectorAll("input[data-field]").forEach((input, index) => { input.value = source[index]; });
     notice(`${origin.querySelector(".alert-site").textContent} 조건을 복사했습니다. 플랫폼마다 다르게 고칠 수 있습니다.`);
   });

@@ -100,7 +100,9 @@ async def analyze(provider, model, task, data):
 
 
 class WorkspaceService:
-    def __init__(self, paths=None, searcher=None, analyzer=None, ephemeral=False):
+    def __init__(
+        self, paths=None, searcher=None, analyzer=None, ephemeral=False, verifier=None
+    ):
         self.paths = paths or ProjectPaths()
         self.ephemeral = ephemeral
         self._memory_profile = None
@@ -111,6 +113,7 @@ class WorkspaceService:
             None if ephemeral else ArtifactStore(self.paths.results / "ui_runs")
         )
         self._searcher = searcher or self._web_search
+        self._verifier = verifier
         self._analyzer = analyzer or analyze
         self._sync_worker = None
         self.custom_model = CustomModel()
@@ -208,28 +211,36 @@ class WorkspaceService:
 
     @staticmethod
     def _web_search(query, domains):
-        from job_agent.core.native_jobs import native_search
         from tavily import TavilyClient
 
+        from job_agent.core.native_jobs import native_search
+
+        native = []
         if len(domains) == 1:
             try:
                 native = native_search(query, domains[0])
-                if native:
-                    return native[:20]
             except Exception:  # noqa: BLE001 - unsupported/blocked pages fall back to search index
-                pass
-        response = TavilyClient().search(
-            query=query,
-            include_domains=domains,
-            max_results=20,
-            search_depth="basic",
-            include_answer=False,
-            include_raw_content="markdown",
-        )
-        return [
+                native = []
+        try:
+            response = TavilyClient().search(
+                query=query,
+                include_domains=domains,
+                max_results=20,
+                search_depth="basic",
+                include_answer=False,
+                include_raw_content="markdown",
+            )
+        except Exception:
+            if native:
+                return native[:80]
+            raise
+        indexed = [
             {**row, "retrieval_source": "search_index"}
             for row in response.get("results", [])
         ]
+        # Index results supplement native cards, rather than disappearing whenever
+        # one native match exists. Canonical IDs are deduplicated by the caller.
+        return native[:60] + indexed[:20]
 
     def _search(self, payload):
         keywords = text_field(payload, "keywords", 300)
@@ -254,6 +265,59 @@ class WorkspaceService:
             if not role and not keywords:
                 raise ValueError("직무 또는 키워드를 입력하세요.")
             sites = list(dict.fromkeys(sites))
+            if payload.get("verify_requirements") is True:
+                from job_agent.alerts.service import JobAlerts
+                from job_agent.core.job_match import (
+                    DEFAULT_EXPERIENCE,
+                    validate_experience,
+                )
+
+                stats = {}
+                rules = {
+                    site: {
+                        "role": role,
+                        "location": location,
+                        "keywords": keywords,
+                        "exclude": text_field(payload, "exclude", 300),
+                        "experience": validate_experience(
+                            payload.get("experience", DEFAULT_EXPERIENCE)
+                        ),
+                    }
+                    for site in sites
+                }
+                jobs, errors = JobAlerts(
+                    searcher=self._searcher, verifier=self._verifier
+                ).collect({"platforms": rules, "max_results": 100}, stats)
+                for job in jobs:
+                    job.update(
+                        content=job["excerpt"],
+                        status="open",
+                        status_reason="상세 원문 접수·직무·지역·경력 근거 확인",
+                        source="web",
+                    )
+                return {
+                    "jobs": jobs,
+                    "coverage": {
+                        **stats,
+                        "fetched": stats.get("fetched", 0),
+                        "unique_postings": stats.get("eligible", 0),
+                        "displayed": len(jobs),
+                        "platforms": [],
+                        "dropped": {
+                            k: v
+                            for k, v in stats.items()
+                            if k.endswith(("unknown", "mismatch"))
+                        },
+                    },
+                    "report": "\n\n".join(
+                        f"{j['company']} · {j['role']}\n{j['url']}" for j in jobs
+                    ),
+                    "notes": [
+                        "원문의 접수·직무·근무지역·경력 근거를 확인한 공고입니다. 지원 직전 변경 여부를 확인하세요.",
+                        f"조건 근거 미확인/불일치는 보류·제외합니다. 상세 확인 {stats.get('detail_checked', 0)}건.",
+                        *errors,
+                    ],
+                }
             plan = [
                 (site, query)
                 for site in sites
@@ -266,7 +330,7 @@ class WorkspaceService:
                     candidates = self._searcher(query, [SITES[site]])
                     if not isinstance(candidates, list):
                         raise TypeError("Invalid search results")
-                    return site, candidates[:20], ""
+                    return site, candidates[:80], ""
                 except Exception as exc:  # noqa: BLE001 - preserve other platforms on provider failure
                     return site, [], type(exc).__name__
 
@@ -299,7 +363,7 @@ class WorkspaceService:
             rows = json.loads(raw)
         else:
             raise ValueError("Unknown source")
-        if not isinstance(rows, list) or len(rows) > (300 if source == "web" else 100):
+        if not isinstance(rows, list) or len(rows) > (1200 if source == "web" else 100):
             raise ValueError("공고는 최대 100개 JSON 배열이어야 합니다.")
         found = {}
         dropped = Counter()

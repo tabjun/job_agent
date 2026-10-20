@@ -29,6 +29,27 @@ def schema(**fields):
 
 
 class PostingStatusTests(unittest.TestCase):
+    def test_header_recommendation_does_not_hide_actual_job_conditions(self):
+        html = (
+            "<head><title>검색 포털</title></head><nav>AI 추천 공고</nav>"
+            + schema(
+                title="데이터 분석가",
+                validThrough="2099-11-30",
+                hiringOrganization={"name": "가상기업"},
+                jobLocation={"address": {"addressRegion": "서울"}},
+            )
+            + "<h1>데이터 분석가</h1><p>지원자격 경력 3년 이상 SQL 활용 우대사항 없음</p><button>지원하기</button>"
+        )
+        row = detail_status(html, URL, NOW)
+        self.assertEqual(row["status"], "open")
+        self.assertIn("SQL", row["job_description"])
+        self.assertEqual(row["experience"]["min_years"], 3)
+        self.assertTrue(row["application_available"])
+        self.assertEqual(row["job_location"], "서울")
+        blocked = detail_status(html.replace("<button>", "<button disabled>"), URL, NOW)
+        self.assertFalse(blocked["application_available"])
+        self.assertTrue(blocked["application_blocked"])
+
     def test_expired_structured_date_wins_over_generic_ongoing_text(self):
         # Date shape observed on the reported employer's public July posting.
         html = schema(validThrough="2026-07-17T13:00", datePosted="2026-07-03")
@@ -104,6 +125,19 @@ class PostingStatusTests(unittest.TestCase):
             validThrough="2026-11-30",
         )
         self.assertEqual(detail_status(html, URL, NOW)["status"], "unknown")
+        html = "<h1>SQL</h1><p>본문</p><div>추천 공고</div><p>마감일 2026.11.30</p>"
+        self.assertEqual(detail_status(html, URL, NOW)["status"], "unknown")
+
+    def test_closed_text_outside_the_title_section_still_wins(self):
+        html = "<div>마감된 공고입니다</div><h1>SQL 분석가</h1><p>마감일 2026.11.30</p>"
+        self.assertEqual(detail_status(html, URL, NOW)["status"], "closed")
+        # The schema title may only appear in the meta description.
+        html = (
+            '<meta name="description" content="SQL 분석가 모집">'
+            + schema(url=URL, title="SQL 분석가", validThrough="2026-11-30")
+            + "<p>채용이 마감되었습니다</p>"
+        )
+        self.assertEqual(detail_status(html, URL, NOW)["status"], "closed")
 
     def test_shared_rejection_normalizes_structured_deadlines(self):
         for key, value in [

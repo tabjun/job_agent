@@ -12,6 +12,7 @@ from urllib.parse import urljoin, urlsplit
 
 import httpx
 
+from job_agent.core.job_match import experience
 from job_agent.core.postings import (
     DATE_VALUE,
     canonical_url,
@@ -39,9 +40,21 @@ class Detail(HTMLParser):
         super().__init__(convert_charrefs=True)
         self.scripts, self.visible, self.meta = [], [], []
         self.script, self.skip = None, None
+        self.heading, self.headings = False, []
+        self.control, self.controls = None, []
+        self.in_head = False
+        self.section, self.recommendation_index = None, None
 
     def handle_starttag(self, tag, attrs):
         attrs = dict(attrs)
+        if tag == "head":
+            self.in_head = True
+        if tag in {"h2","h3"}:
+            self.section = (tag,len(self.visible),[])
+        if tag in {"a", "button"}:
+            self.control = (tag, attrs, [])
+        if tag == "h1":
+            self.heading = True
         if tag == "script":
             self.skip = tag
             self.script = (
@@ -53,16 +66,33 @@ class Detail(HTMLParser):
             self.meta.append(attrs.get("content", ""))
 
     def handle_endtag(self, tag):
+        if self.section and tag==self.section[0]:
+            label=" ".join(" ".join(self.section[2]).split())
+            if self.headings and re.match(r"^(?:추천\s*(?:공고|채용)|비슷한\s*(?:공고|포지션)|연관\s*공고)",label):
+                if self.recommendation_index is None:self.recommendation_index=self.section[1]
+            self.section=None
+        if tag == "head":
+            self.in_head = False
+        if self.control and tag == self.control[0]:
+            self.controls.append(self.control)
+            self.control = None
+        if tag == "h1":
+            self.heading = False
         if tag == self.skip:
             if self.script is not None:
                 self.scripts.append("".join(self.script))
             self.script, self.skip = None, None
 
     def handle_data(self, data):
+        if self.control and not self.skip:
+            self.control[2].append(data)
         if self.script is not None:
             self.script.append(data)
-        elif not self.skip:
+        elif not self.skip and not self.in_head:
             self.visible.append(data)
+            if self.section:self.section[2].append(data)
+            if self.heading:
+                self.headings.append(data)
 
 
 def _jobs(value):
@@ -110,14 +140,9 @@ def detail_status(html, url, now):
     now = now.replace(tzinfo=KST) if now.tzinfo is None else now.astimezone(KST)
     parser = Detail()
     parser.feed(html)
-    body = " ".join(" ".join(parser.visible + parser.meta).split())
-    # Recommendation widgets are different postings, not this page's deadline.
-    body = re.split(
-        r"이 기업의 취업 전략|추천\s*(?:공고|채용)|비슷한\s*(?:공고|포지션)|연관\s*공고",
-        body,
-    )[0]
-    if closed_text(body):
-        return {"status": "closed", "evidence": "detail_closed_text"}
+    primary = parser.visible[:parser.recommendation_index] if parser.recommendation_index is not None else parser.visible
+    page = " ".join(" ".join(primary).split())
+    meta = " ".join(" ".join(parser.meta).split())
     postings = []
     for script in parser.scripts:
         try:
@@ -131,6 +156,106 @@ def detail_status(html, url, now):
         matching = postings
     if postings and not matching:
         return {"status": "unknown", "evidence": "unmatched_job_schema"}
+    job = matching[0] if matching else {}
+    heading = str(job.get("title") or " ".join(parser.headings)).strip()
+    # Find the title in the visible page only; meta text is appended last and
+    # must not become the whole body. A header menu may say 'AI 추천 공고'
+    # before this posting, so the text split starts at the title.
+    start = page.find(heading) if heading else -1
+    prefix, body = (page[:start], page[start:]) if start >= 0 else ("", page)
+    # Recommendation widgets are different postings, not this page's deadline,
+    # even when their title is a plain <div> rather than an h2/h3 heading.
+    body = re.split(
+        r"이 기업의 취업 전략|추천\s*(?:공고|채용)|비슷한\s*(?:공고|포지션)|연관\s*공고",
+        body,
+    )[0]
+    body = f"{body} {meta}".strip()
+    # A closed badge can sit above the title; a false 'closed' only withholds
+    # a posting, while a missed one mails an expired posting.
+    if closed_text(prefix) or closed_text(body):
+        return {"status": "closed", "evidence": "detail_closed_text"}
+    addresses = job.get("jobLocation") or []
+    addresses = addresses if isinstance(addresses, list) else [addresses]
+    locations = []
+    for location in addresses:
+        address = location.get("address", {}) if isinstance(location, dict) else {}
+        if isinstance(address, dict):
+            locations.append(
+                " ".join(
+                    str(address.get(k) or "")
+                    for k in ("addressRegion", "addressLocality", "streetAddress")
+                )
+            )
+    location = " ".join(locations).strip()
+    if not location:
+        match = re.search(
+            r"(?:근무지역|근무지(?:주소)?|근무장소|근무위치)\s*[:：]?\s*(.{2,100})",
+            body,
+        )
+        location = match[1].strip() if match else ""
+    structured_exp = job.get("experienceRequirements") or ""
+    if isinstance(structured_exp, dict):
+        structured_exp = structured_exp.get("monthsOfExperience")
+        structured_exp = (
+            f"경력 {float(structured_exp) / 12:g}년 이상"
+            if isinstance(structured_exp, (int, float)) and structured_exp % 12 == 0
+            else ""
+        )
+    exp = experience(structured_exp)
+    if exp["kind"] == "unknown":
+        qualification = re.search(
+            r"(?:자격요건|지원자격|필수요건|필수사항|자격사항)\s*[:：]?\s*(.{1,3500}?)(?=우대사항|우대요건|복리후생|혜택|$)",
+            body,
+        )
+        explicit_exp = re.search(
+            r"경력\s*(?:무관|\d{1,2}\s*[~∼～-]\s*\d{1,2}\s*년|\d{1,2}\s*년\s*(?:이상|이하|↑|↓|\+)|신입\s*/\s*경력)",
+            body,
+        )
+        exp = experience(
+            qualification[1]
+            if qualification
+            else explicit_exp[0]
+            if explicit_exp
+            else ""
+        )
+    details = {
+        "job_location": location,
+        "job_title": str(job.get("title") or " ".join(parser.headings)).strip(),
+        "experience": exp,
+        "company": (job.get("hiringOrganization") or {}).get("name", "")
+        if isinstance(job.get("hiringOrganization"), dict)
+        else "",
+        "job_description": body[:12000],
+    }
+    apply_controls = [
+        attrs
+        for _, attrs, parts in parser.controls
+        if re.fullmatch(
+            r"(?:홈페이지|간편|즉시|온라인)?\s*(?:입사)?지원(?:하기|서\s*작성)?",
+            " ".join(" ".join(parts).split()),
+        )
+        and "disabled" not in attrs
+        and attrs.get("aria-disabled") != "true"
+        and attrs.get("aria-hidden") != "true"
+        and "display:none" not in attrs.get("style", "").replace(" ", "")
+    ]
+    details["application_available"] = bool(apply_controls)
+    details["application_blocked"] = (
+        any(
+            re.fullmatch(
+                r"(?:홈페이지|간편|즉시|온라인)?\s*(?:입사)?지원(?:하기|서\s*작성)?",
+                " ".join(" ".join(parts).split()),
+            )
+            and ("disabled" in attrs or attrs.get("aria-disabled") == "true")
+            for _, attrs, parts in parser.controls
+        )
+        and not apply_controls
+    )
+    details["application_evidence"] = (
+        "공개 원문에 활성 지원 버튼/링크 표시"
+        if apply_controls
+        else "활성 지원 경로 미확인"
+    )
     values = [p.get("validThrough") for p in matching]
     # Metadata can expose deadlines when the body requires JavaScript.
     values += deadline_values(body)
@@ -148,7 +273,12 @@ def detail_status(html, url, now):
         return {"status": "unknown", "evidence": "not_started"}
     if parsed:
         value, _ = min(parsed, key=lambda item: item[1])
-        return {"status": "open", "evidence": "detail_deadline", "deadline": str(value)}
+        return {
+            "status": "open",
+            "evidence": "detail_deadline",
+            "deadline": str(value),
+            **details,
+        }
     if re.search(
         r"(?:마감일|접수\s*기간|모집\s*기간)\s*[:：|]?\s*(?:상시\s*(?:채용|모집)|채용\s*시\s*마감)",
         body,
@@ -157,6 +287,7 @@ def detail_status(html, url, now):
             "status": "open",
             "evidence": "detail_ongoing",
             "period": "채용 시 마감 (원문 확인)",
+            **details,
         }
     return {"status": "unknown", "evidence": "no_current_deadline"}
 
