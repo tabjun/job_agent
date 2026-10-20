@@ -157,28 +157,72 @@ def rejection(row, domain, today=None):
     ):
         return "listing"
     body = title + " " + str(row.get("raw_content") or row.get("content") or "")
-    if re.search(
-        r"(?:공고|채용|접수|모집)(?:가|이|은|는)?\s*(?:종료|마감)(?:되었|됐|된|했습니다|되었습니다)",
-        body,
+    if closed_text(body):
+        return "closed"
+    deadlines = [row.get(k) for k in ("validThrough", "end_date", "deadline")]
+    deadlines += deadline_values(body)
+    if any(
+        (parsed := full_date(value)) and parsed < (today or date.today())
+        for value in deadlines
     ):
         return "closed"
-    if re.search(r"마감일\s*[:：]\s*(?:마감|종료)(?=\s|[.,]|$)", body):
-        return "closed"
-    deadline = row.get("validThrough") or row.get("end_date") or row.get("deadline")
-    if not deadline:
-        explicit = re.search(
-            r"(?:마감일|접수마감)\s*[:：]?\s*(\d{4}[-./]\d{1,2}[-./]\d{1,2})", body
-        )
-        if explicit:
-            deadline = explicit[1].replace(".", "-").replace("/", "-")
-    if deadline:
+    return ""
+
+
+DATE_VALUE = r"\d{4}\s*(?:[-./]|년)\s*\d{1,2}\s*(?:[-./]|월)\s*\d{1,2}\s*일?"
+SHORT_DATE = r"\d{1,2}\s*[-./월]\s*\d{1,2}\s*일?"
+DAY_SUFFIX = r"\s*(?:\([월화수목금토일]\))?"
+CLOCK_SUFFIX = r"(?:\s*(?:\d{1,2}:\d{2}(?::\d{2})?|\d{1,2}\s*시(?:\s*\d{1,2}\s*분)?))?"
+
+
+def full_date(value):
+    """Parse a full calendar date, never treat publication dates as deadlines."""
+    match = re.match(rf"\s*({DATE_VALUE})(?!\d)", str(value or ""))
+    if match:
         try:
-            parts = str(deadline).split("T")[0].split("-")
-            if date(*map(int, parts)) < (today or date.today()):
-                return "closed"
+            return date(*map(int, re.findall(r"\d+", match[1])))
         except ValueError:
             pass
-    return ""
+    return None
+
+
+def deadline_values(body):
+    """Only labeled closing dates/range ends; a yearless lone date stays unknown."""
+    values = re.findall(
+        rf"(?:마감(?:일|날짜)?|접수\s*마감(?:일)?)\s*[:：|(~∼～]*\s*({DATE_VALUE}{DAY_SUFFIX}{CLOCK_SUFFIX})",
+        body,
+    )
+    for match in re.finditer(
+        rf"(?:접수|모집|채용|공고)\s*기간\s*[:：|]?\s*({DATE_VALUE}){DAY_SUFFIX}"
+        rf"\s*[~∼～]\s*({DATE_VALUE}|{SHORT_DATE})({DAY_SUFFIX}{CLOCK_SUFFIX})",
+        body,
+    ):
+        start, end = full_date(match[1]), full_date(match[2])
+        if start and not end:
+            parts = re.findall(r"\d+", match[2])
+            try:
+                month, day = map(int, parts)
+                end = date(
+                    start.year + ((month, day) < (start.month, start.day)), month, day
+                )
+            except ValueError:
+                pass
+        if start and end and end >= start:
+            values.append(end.isoformat() + " " + match[3].strip())
+    return values
+
+
+def closed_text(body):
+    return bool(
+        re.search(
+            r"(?:마감|종료)\s*(?:되었습니다|되었|됐|된\s*공고|했습니다)"
+            r"|(?:채용|접수|모집)(?:이|가|은|는)?\s*(?:종료|마감)\s*(?:되었습니다|됐|된|했습니다|되었)"
+            r"|(?:^|[\n|])(?:채용|접수|모집)\s*(?:종료|마감)\s*(?:[.。]|$)"
+            r"|(?:마감|종료)\s*\(\s*[~∼～]"
+            r"|마감일\s*[:：]\s*(?:마감|종료)(?=\s|[.,]|$)",
+            body,
+        )
+    )
 
 
 def text(value, limit=180):

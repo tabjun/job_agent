@@ -27,6 +27,9 @@ class AlertBrowserTests(unittest.TestCase):
             )
             mailer = FakeMailer()
             server.alerts.mailer = mailer
+            server.alerts.verifier = Mock(
+                return_value={"status": "open", "evidence": "fixture"}
+            )
             server.alerts.searcher = Mock(
                 return_value=[
                     {
