@@ -15,7 +15,12 @@ def compose(alert, jobs, names):
         name = names.get(job.get("site"), "")
         url = safe_url(job.get("url", ""))
         company, role, period = (fields[key] for key in ("company", "role", "period"))
-        plain += [f"{company} ({name}) | {role} | {period}"]
+        # Open status was confirmed, but the apply button is rendered by script.
+        unconfirmed = (job.get("requirements_check") or {}).get(
+            "application_confirmed"
+        ) is False
+        note = " · 지원 버튼 미확인" if unconfirmed else ""
+        plain += [f"{company} ({name}) | {role} | {period}{note}"]
         if url:
             plain.append(url)
         link = (
@@ -27,14 +32,16 @@ def compose(alert, jobs, names):
             "<tr>"
             f'<td style="padding:10px 8px;border-bottom:1px solid #ddd;vertical-align:top;overflow-wrap:anywhere">{escape(company)}<br><small style="color:#666">{escape(name)}</small></td>'
             f'<td style="padding:10px 8px;border-bottom:1px solid #ddd;vertical-align:top;overflow-wrap:anywhere">{link}</td>'
-            f'<td style="padding:10px 8px;border-bottom:1px solid #ddd;vertical-align:top;overflow-wrap:anywhere">{escape(period)}</td>'
+            f'<td style="padding:10px 8px;border-bottom:1px solid #ddd;vertical-align:top;overflow-wrap:anywhere">{escape(period)}'
+            + ('<br><small style="color:#8a5a00">지원 버튼 미확인</small>' if unconfirmed else "")
+            + "</td>"
             "</tr>"
         )
-    footer = "발송 전 원문 접수상태 확인 · 이후 변경될 수 있으므로 지원 전 원문에서 확인하세요."
+    footer = "발송 전 원문 접수상태 확인 · '지원 버튼 미확인'은 마감일·접수 중 근거는 있으나 지원 버튼을 화면 원문에서 읽지 못한 공고입니다 · 이후 변경될 수 있으므로 지원 전 원문에서 확인하세요."
     if alert.get("collection"):
         info = alert["collection"]
         footer = (
-            f"수집 {info.get('fetched', 0)}건 · 조건 통과 {info.get('eligible', 0)}건 · 마감 제외 {info.get('closed', 0) + info.get('detail_closed', 0)}건 · 상태 미확인 보류 {info.get('status_unverified', 0)}건 · 이번 메일 {len(jobs)}건 (설정 상한 {info.get('limit', 10)}건). "
+            f"수집 {info.get('fetched', 0)}건 · 조건 통과 {info.get('eligible', 0)}건 · 마감 제외 {info.get('closed', 0) + info.get('detail_closed', 0)}건 · 상태 미확인 보류 {info.get('status_unverified', 0)}건 · 조건 근거 미확인 보류 {info.get('requirements_held', 0)}건 · 상세 미확인 {info.get('detail_not_checked', 0)}건 · 이번 메일 {len(jobs)}건 (설정 상한 {info.get('limit', 10)}건). "
             + footer
         )
     plain += ["", footer]

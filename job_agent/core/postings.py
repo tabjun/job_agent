@@ -11,6 +11,11 @@ SITES = {
     "wanted": "wanted.co.kr",
     "incruit": "incruit.com",
 }
+# One label for apply buttons/links on detail pages and search cards
+# (사람인 입사지원, 잡코리아 즉시 지원, 인크루트 바로지원·인크루트 지원 ...).
+APPLY_LABEL = (
+    r"(?:홈페이지|간편|즉시|온라인|바로|인크루트)?\s*(?:입사)?\s*지원(?:하기|서\s*작성)?"
+)
 NAMES = {
     "catch": "캐치",
     "jobkorea": "잡코리아",

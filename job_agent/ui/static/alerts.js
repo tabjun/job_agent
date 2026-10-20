@@ -30,7 +30,7 @@
       const toggle = element("label", "alert-site"); const box = element("input"); box.type = "checkbox"; box.id = `alert-site-${key}`;
       toggle.append(box, document.createTextNode(name));
       const grid = element("div", "form-grid");
-      for (const [field, caption, hint] of [["role", "직무", "데이터 분석가"], ["location", "지역 (여러 곳은 쉼표)", "서울, 경기"], ["keywords", "키워드", "Python, SQL"], ["exclude", "제외 키워드", "인턴, 계약직"]]) {
+      for (const [field, caption, hint] of [["role", "직무", "데이터 분석가"], ["location", "지역 (여러 곳은 쉼표)", "서울, 경기"], ["keywords", "우선 키워드 (먼저 확인, 거르지 않음)", "Python, SQL"], ["exclude", "제외 키워드", "인턴, 계약직"]]) {
         const label = element("label", "", caption); const input = element("input"); input.id = `alert-${key}-${field}`; input.dataset.field = field; input.maxLength = field === "role" || field === "location" ? 100 : 300; input.placeholder = hint;
         label.append(input); grid.append(label);
       }
@@ -99,7 +99,7 @@
       const sites = Object.keys(alert.platforms).map(key => state.platforms.find(p => p.key === key)?.name || key).join(" · ");
       info.append(title, element("p", "", `${alert.email} · ${scheduleText(alert)} · ${sites} · 최대 ${alert.max_results}건`));
       info.append(element("p", "", `다음 발송 ${alert.next_run.replace("T", " ")} · 지금까지 보낸 공고 ${alert.sent_count}건${alert.last_status ? ` · 최근: ${alert.last_status}` : ""}`));
-      if (alert.last_collection) { const stats = alert.last_collection; info.append(element("p", "", `최근 수집 ${stats.fetched || 0}건 · 조건 통과 ${stats.eligible || 0}건 · 마감 제외 ${(stats.closed || 0) + (stats.detail_closed || 0)}건 · 접수상태 미확인 보류 ${stats.status_unverified || 0}건 · 메일 선택 ${stats.selected || 0}건 / 상한 ${stats.limit}건${stats.missing_keyword_evidence ? ` · 키워드 근거 부족 ${stats.missing_keyword_evidence}건` : ""}`)); }
+      if (alert.last_collection) { const stats = alert.last_collection; info.append(element("p", "", `최근 수집 ${stats.fetched || 0}건 · 조건 통과 ${stats.eligible || 0}건 · 마감 제외 ${(stats.closed || 0) + (stats.detail_closed || 0)}건 · 접수상태 미확인 보류 ${stats.status_unverified || 0}건 · 조건 근거 미확인 보류 ${stats.requirements_held || 0}건 · 상세 미확인 ${stats.detail_not_checked || 0}건${stats.application_unconfirmed ? ` · 지원 버튼 미확인 표시 ${stats.application_unconfirmed}건` : ""} · 메일 선택 ${stats.selected || 0}건 / 상한 ${stats.limit}건${stats.missing_keyword_evidence ? ` · 키워드 근거 부족 ${stats.missing_keyword_evidence}건` : ""}`)); }
       const actions = element("div", "alert-actions");
       actions.append(
         button("pencil", "수정", () => { fillForm(alert); $("#alert-form").scrollIntoView({behavior: "smooth"}); }),

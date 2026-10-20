@@ -240,7 +240,7 @@ class WorkspaceService:
         ]
         # Index results supplement native cards, rather than disappearing whenever
         # one native match exists. Canonical IDs are deduplicated by the caller.
-        return native[:60] + indexed[:20]
+        return native[:100] + indexed[:20]
 
     def _search(self, payload):
         keywords = text_field(payload, "keywords", 300)
@@ -292,7 +292,21 @@ class WorkspaceService:
                     job.update(
                         content=job["excerpt"],
                         status="open",
-                        status_reason="상세 원문 접수·직무·지역·경력 근거 확인",
+                        status_reason=(
+                            "상세 원문 접수 근거 + "
+                            + (
+                                "검색 카드 보완"
+                                if job["status_check"].get("condition_source")
+                                == "detail_and_native_card"
+                                else "상세 원문"
+                            )
+                            + " 직무·지역·경력 근거"
+                            + (
+                                ""
+                                if job["requirements_check"].get("application_confirmed")
+                                else " · 지원 버튼 미확인"
+                            )
+                        ),
                         source="web",
                     )
                 return {

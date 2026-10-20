@@ -28,9 +28,10 @@ from job_agent.core.job_match import (
     DEFAULT_EXPERIENCE,
     merge_cross_platform,
     requirements,
+    title_check,
     validate_experience,
 )
-from job_agent.core.job_status import confirmation_current, verify_posting
+from job_agent.core.job_status import confirmation_current, detail_url, verify_posting
 from job_agent.core.paths import ProjectPaths
 from job_agent.core.postings import (
     allowed_regions,
@@ -187,8 +188,18 @@ def file_lock(path, timeout, stale, busy):
 
 
 class JobAlerts:
+    # Detail pages fetched per run. Candidates are interleaved by platform, so
+    # each platform gets an equal share and unused shares pass to the others.
+    DETAIL_BUDGET = 160
+
     def __init__(
-        self, paths=None, searcher=None, mailer=None, clock=None, verifier=None
+        self,
+        paths=None,
+        searcher=None,
+        mailer=None,
+        clock=None,
+        verifier=None,
+        supported=None,
     ):
         self.paths = paths or ProjectPaths()
         self.folder = self.paths.results / "job_alerts"
@@ -197,6 +208,11 @@ class JobAlerts:
         self.mailer = mailer or Mailer()
         self.clock = clock or datetime.now
         self.verifier = verifier or verify_posting
+        # The public detail checker only reads known posting routes; anything
+        # else would come back unknown, so it never spends the detail budget.
+        self.supported = supported or (
+            detail_url if self.verifier is verify_posting else bool
+        )
 
     # storage -------------------------------------------------------------
     def _load(self):
@@ -417,11 +433,21 @@ class JobAlerts:
         return self.status()
 
     # running -------------------------------------------------------------
-    def collect(self, alert, diagnostics=None):
-        """Search each platform with its own conditions; drop already-mailed URLs."""
+    def collect(self, alert, diagnostics=None, trace=None):
+        """Search each platform with its own conditions; drop already-mailed URLs.
+
+        ``trace`` (a list) receives one outcome per candidate URL so a run's
+        omissions can be explained later; it is kept out of ``diagnostics``.
+        """
         seen = {canonical_url(url) for url in alert.get("sent_urls", [])}
         jobs, errors = {}, []
         counts = Counter()
+        outcomes = {}
+
+        def note(site, url, title, outcome):
+            outcomes.setdefault(
+                url, {"site": site, "url": url, "title": title[:120], "outcome": outcome}
+            )
         for site, rule in alert["platforms"].items():
             rows = []
             failed = []
@@ -430,7 +456,7 @@ class JobAlerts:
                     result = self.searcher(query, [SITES[site]])
                     if not isinstance(result, list):
                         raise TypeError("Invalid search results")
-                    rows.extend(result[:80])
+                    rows.extend(result[:120])
                 except Exception as exc:  # noqa: BLE001 - preserve other queries and platforms
                     failed.append(type(exc).__name__)
             if failed:
@@ -449,12 +475,13 @@ class JobAlerts:
                     host == SITES[site] or host.endswith("." + SITES[site])
                 ):
                     continue
+                title = str(row.get("title", "")).strip()[:300]
                 reason = rejection(row, SITES[site], self.clock().date())
                 if reason:
                     counts[reason] += 1
+                    note(site, canonical_url(url), title, reason)
                     continue
                 url = canonical_url(url)
-                title = str(row.get("title", "")).strip()[:300]
                 content = str(
                     row.get("raw_content")
                     or row.get("content")
@@ -465,6 +492,7 @@ class JobAlerts:
                 # can share it. Deduplicate by URL to avoid hiding valid jobs.
                 if LISTING.search(title):
                     counts["listing"] += 1
+                    note(site, url, title, "listing")
                     continue
                 if (
                     url in seen
@@ -472,6 +500,13 @@ class JobAlerts:
                     or any(matches(t, body) for t in excluded)
                 ):
                     counts["sent_duplicate_or_excluded"] += 1
+                    if url not in jobs:  # a repeated hit is the same candidate
+                        note(
+                            site,
+                            url,
+                            title,
+                            "already_sent" if url in seen else "excluded_keyword",
+                        )
                     continue
                 hits = [t for t in wanted if matches(t, body)]
                 if wanted and not hits:
@@ -479,6 +514,7 @@ class JobAlerts:
                 keep, region = region_check(body, regions) if regions else (True, "")
                 if not keep:
                     counts["region"] += 1
+                    note(site, url, title, "region")
                     continue
                 jobs[url] = {
                     "site": site,
@@ -496,14 +532,30 @@ class JobAlerts:
                     else {},
                     **posting_fields({**row, "title": title, "content": content}),
                 }
+        candidates = list(jobs.values())
+        checkable = []
+        for job in candidates:
+            if self.supported(job["url"]):
+                checkable.append(job)
+            else:
+                counts["unsupported_detail_url"] += 1
+                note(job["site"], job["url"], job["title"], "unsupported_detail_url")
+        # Titles that already fit the role are checked first; the rest only
+        # use what is left of the budget (the detail title can still differ).
         ranked = sorted(
-            jobs.values(), key=lambda j: len(j["matched_keywords"]), reverse=True
+            checkable,
+            key=lambda j: (
+                title_check(j["title"], j["rule"].get("role") or "") == "",
+                len(j["matched_keywords"]),
+            ),
+            reverse=True,
         )
         # Search snippets are candidates, not proof that applications are open.
         # Verify in small batches so closed/unknown rows do not consume mail slots.
         ordered = diverse_jobs(ranked, len(ranked))
         selected = []
         limit = alert.get("max_results", 10)
+        budget = self.DETAIL_BUDGET
 
         def verify(job):
             try:
@@ -517,15 +569,22 @@ class JobAlerts:
                 return {}
 
         with ThreadPoolExecutor(max_workers=4) as pool:
-            for offset in range(0, min(len(ordered), 100), 8):
-                batch = ordered[offset : min(offset + 8, 100)]
+            for offset in range(0, min(len(ordered), budget), 8):
+                batch = ordered[offset : min(offset + 8, budget)]
                 checks = list(pool.map(verify, batch))
                 counts["detail_checked"] += len(batch)
                 for job, check in zip(batch, checks):
                     if check.get("status") == "closed":
                         counts["detail_closed"] += 1
+                        note(job["site"], job["url"], job["title"], "detail_closed")
                     elif check.get("status") != "open":
                         counts["status_unverified"] += 1
+                        note(
+                            job["site"],
+                            job["url"],
+                            job["title"],
+                            "status_unverified:" + str(check.get("evidence", "error")),
+                        )
                     else:
                         card = job.get("requirements_card", {})
                         check = dict(check)
@@ -559,12 +618,14 @@ class JobAlerts:
                                 and not hits
                             ):
                                 counts["missing_keyword_evidence"] += 1
+                                note(job["site"], job["url"], job["title"], "missing_keyword_evidence")
                                 continue
                             if any(
                                 matches(t, full_body)
                                 for t in terms(job["rule"]["exclude"])
                             ):
                                 counts["excluded_keyword"] += 1
+                                note(job["site"], job["url"], job["title"], "excluded_keyword")
                                 continue
                             job["matched_keywords"] = hits
                         elif (
@@ -573,6 +634,7 @@ class JobAlerts:
                             and job["rule"].get("require_keywords") is True
                         ):
                             counts["missing_keyword_evidence"] += 1
+                            note(job["site"], job["url"], job["title"], "missing_keyword_evidence")
                             continue
                         match = requirements({**job, **check}, job["rule"])
                         if match["decision"] != "pass":
@@ -582,6 +644,7 @@ class JobAlerts:
                                 if match["decision"] == "hold"
                                 else "requirements_rejected"
                             ] += 1
+                            note(job["site"], job["url"], job["title"], match["reason"])
                             continue
                         confirmed = {
                             **job,
@@ -593,6 +656,8 @@ class JobAlerts:
                         confirmed.pop("requirements_card", None)
                         confirmed["requirements_check"] = match
                         counts["requirements_confirmed"] += 1
+                        if not match.get("application_confirmed"):
+                            counts["application_unconfirmed"] += 1
                         if check.get("job_title"):
                             confirmed["role"] = check["job_title"]
                         if check.get("company"):
@@ -608,12 +673,25 @@ class JobAlerts:
                 if len(selected) >= limit:
                     break
         counts["detail_not_checked"] = len(ordered) - counts["detail_checked"]
+        for job in ordered[counts["detail_checked"] :]:
+            note(job["site"], job["url"], job["title"], "detail_not_checked")
+        for index, job in enumerate(selected):
+            note(
+                job["site"],
+                job["url"],
+                job["title"],
+                "selected" if index < limit else "over_limit",
+            )
+            for url in job.get("alternate_urls", []):
+                note(job["site"], url, job["title"], "cross_platform_duplicate")
         selected = selected[:limit]
+        if trace is not None:
+            trace.extend(outcomes.values())
         if diagnostics is not None:
             diagnostics.update(
                 {
                     **counts,
-                    "candidates": len(ranked),
+                    "candidates": len(candidates),
                     "eligible": counts["requirements_confirmed"] - counts["cross_platform_duplicate"],
                     "selected": len(selected),
                     "limit": alert.get("max_results", 10),
@@ -621,6 +699,27 @@ class JobAlerts:
                 }
             )
         return selected, errors
+
+    def _write_trace(self, alert_id, collection, trace):
+        """Latest run's per-candidate outcomes, for explaining omissions."""
+        if not re.fullmatch(r"[0-9a-f]{32}", str(alert_id)):
+            return
+        folder = self.folder / "runs"
+        folder.mkdir(parents=True, exist_ok=True)
+        temp = folder / f"{alert_id}.{secrets.token_hex(4)}.tmp"
+        temp.write_text(
+            json.dumps(
+                {
+                    "run_at": self.clock().isoformat(timespec="seconds"),
+                    "collection": collection,
+                    "candidates": trace,
+                },
+                ensure_ascii=False,
+                indent=1,
+            ),
+            "utf-8",
+        )
+        temp.replace(folder / f"{alert_id}.json")
 
     @staticmethod
     def compose(alert, jobs):
@@ -634,14 +733,12 @@ class JobAlerts:
             )
         if alert is None:
             raise ValueError("알림을 찾을 수 없습니다.")
-        collection = {}
-        jobs, errors = self.collect(alert, collection)
+        collection, trace = {}, []
+        jobs, errors = self.collect(alert, collection, trace)
+        self._write_trace(alert_id, collection, trace)
         if not send:
             status = f"새 공고 {len(jobs)}건 (미리보기 · 미발송)"
-            if collection.get("requirements_held"):
-                status += f" · 조건/지원경로 근거 미확인 {collection['requirements_held']}건 보류"
-            if collection.get("status_unverified"):
-                status += f" · 접수상태 미확인 {collection['status_unverified']}건 보류"
+            status += self._held_summary(collection)
             if errors:
                 status += " · " + "; ".join(errors)
             return {
@@ -689,10 +786,7 @@ class JobAlerts:
                     status = f"새 공고 {len(jobs)}건 발송"
                 except Exception as exc:  # noqa: BLE001 - keep URLs unsent and record why
                     status = f"메일 발송 실패: {type(exc).__name__}"
-            if collection.get("status_unverified"):
-                status += f" · 접수상태 미확인 {collection['status_unverified']}건 보류"
-            if collection.get("requirements_held"):
-                status += f" · 조건/지원경로 근거 미확인 {collection['requirements_held']}건 보류"
+            status += self._held_summary(collection)
             if errors and not status.startswith("검색 실패"):
                 status += " · " + "; ".join(errors)
             stored["last_run_at"] = self.clock().isoformat(timespec="seconds")
@@ -715,6 +809,19 @@ class JobAlerts:
             "jobs": jobs,
             "collection": collection,
         }
+
+    @staticmethod
+    def _held_summary(collection):
+        parts = []
+        if collection.get("application_unconfirmed"):
+            parts.append(f"지원 버튼 미확인 표시 {collection['application_unconfirmed']}건")
+        if collection.get("status_unverified"):
+            parts.append(f"접수상태 미확인 {collection['status_unverified']}건 보류")
+        if collection.get("requirements_held"):
+            parts.append(f"조건 근거 미확인 {collection['requirements_held']}건 보류")
+        if collection.get("detail_not_checked"):
+            parts.append(f"상세 미확인 {collection['detail_not_checked']}건")
+        return "".join(" · " + part for part in parts)
 
     def run_now(self, payload):
         with self._process_lock():

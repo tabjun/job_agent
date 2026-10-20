@@ -80,6 +80,62 @@ class NativeJobTests(unittest.TestCase):
         self.assertNotIn("cookie", requests[0].headers)
         self.assertEqual(requests[0].url.params["stext"], "데이터 분석")
 
+    def test_incruit_card_carries_location_experience_and_apply_button(self):
+        # Shape of the public Incruit search card (highlight spans split words).
+        html = (
+            '<ul class="c_row"><li class="c_col"><div class="cell_first"><a class="cpname">가상기업</a></div>'
+            '<div class="cell_mid"><div class="cl_top"><a href="https://job.incruit.com/jobdb_info/jobpost.asp?job=2610160003272&src=etc">'
+            '마이<span class="highlight">데이터</span>사업팀원 (<span class="highlight">데이터</span><span class="highlight">분석</span>가)</a>'
+            '<button class="btns_scraps">스크랩</button></div>'
+            '<div class="cl_md"><span>서울 강남구</span><span>경력 2~5년</span><span>대졸↑</span></div></div>'
+            '<div class="cell_last"><div class="cl_btm"><span>~11.15 (일)</span></div>'
+            "<div class=\"cl_top\"><button class='btns_job_submit'>바로지원</button></div></div></li></ul>"
+        )
+        row = parse_cards("incruit", html)[0]
+        self.assertEqual(row["title"], "마이데이터사업팀원 (데이터분석가)")
+        card = row["requirements_card"]
+        self.assertEqual(card["job_location"], "서울 강남구")
+        self.assertEqual(
+            (card["experience"]["min_years"], card["experience"]["max_years"]), (2, 5)
+        )
+        self.assertTrue(card["application_available"])
+
+    def test_jobkorea_card_carries_location_experience_and_apply_button(self):
+        link = '<a href="https://www.jobkorea.co.kr/Recruit/GI_Read/50120666?Oem_Code=C1">'
+        html = (
+            '<div data-sentry-component="CardJob"><div>'
+            f'{link}<span>데이터 과학자 경력직 모집</span></a>'
+            f'<span>{link}<span>메디리타</span></a></span>'
+            '<div data-sentry-component="GrayChip"><div><span class="emoji--basicemoji-place2"></span></div><span>서울 마포구</span></div>'
+            '<div data-sentry-component="GrayChip"><div><span class="emoji--basicemoji-briefcase"></span></div><span>IT, 데이터분석가</span></div>'
+            '<button type="button">즉시 지원</button>'
+            '<span class="text-gray700">경력1년↑</span>'
+            "</div></div>"
+        )
+        row = parse_cards("jobkorea", html)[0]
+        card = row["requirements_card"]
+        self.assertEqual(card["job_location"], "서울 마포구")
+        self.assertEqual(card["experience"]["min_years"], 1)
+        self.assertTrue(card["application_available"])
+        self.assertEqual(card["job_title"], "데이터 과학자 경력직 모집")
+
+    def test_or_alternatives_are_separate_site_searches(self):
+        words = []
+
+        def handle(request):
+            words.append(request.url.params["stext"])
+            return httpx.Response(200, text="<html></html>")
+
+        original = httpx.Client
+        with patch(
+            "job_agent.core.native_jobs.httpx.Client",
+            side_effect=lambda **kw: original(
+                transport=httpx.MockTransport(handle), **kw
+            ),
+        ):
+            native_search("머신러닝 OR AI 채용", "jobkorea.co.kr")
+        self.assertEqual(words, ["머신러닝", "AI"])
+
     def test_unsupported_layout_does_not_fabricate_cards(self):
         self.assertEqual(
             parse_cards("jobkorea", "<html>로그인 또는 화면 변경</html>"), []
