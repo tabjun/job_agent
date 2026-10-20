@@ -44,6 +44,12 @@ def compose(alert, jobs, names):
             f"수집 {info.get('fetched', 0)}건 · 조건 통과 {info.get('eligible', 0)}건 · 마감 제외 {info.get('closed', 0) + info.get('detail_closed', 0)}건 · 상태 미확인 보류 {info.get('status_unverified', 0)}건 · 조건 근거 미확인 보류 {info.get('requirements_held', 0)}건 · 상세 미확인 {info.get('detail_not_checked', 0)}건 · 이번 메일 {len(jobs)}건 (설정 상한 {info.get('limit', 10)}건). "
             + footer
         )
+        if info.get("matched", 0) > len(jobs):
+            footer = (
+                f"조건에 맞는 공고 {info['matched']}건 중 {len(jobs)}건을 보냈습니다. "
+                "나머지는 다음 메일로 이어서 보내며, 구글 시트를 설정했다면 전체가 시트에 저장됩니다. "
+                + footer
+            )
     plain += ["", footer]
     html = (
         '<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>'

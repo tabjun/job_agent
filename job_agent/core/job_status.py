@@ -23,6 +23,17 @@ from job_agent.core.postings import (
 )
 
 KST = timezone(timedelta(hours=9))
+# Other postings shown under this one (similar, recommended, viewed together).
+WIDGETS = (
+    r"이 기업의 취업 전략|추천\s*(?:공고|채용)|비슷한\s*(?:공고|포지션)|연관\s*공고"
+    r"|함께\s*본\s*공고|방금\s*본\s*공고"
+)
+# '경력 3년 이상', '경력(3년 이상)', '경력 : 경력(2년 이상)', '경력:신입/경력'
+EXPLICIT_EXPERIENCE = (
+    r"경력\s*[(:：]?\s*(?:경력\s*)?\(?\s*(?:무관|\d{1,2}\s*년?\s*[~∼～-]\s*\d{1,2}\s*년"
+    r"|\d{1,2}\s*년\s*차?\s*(?:이상|이하|↑|↓|\+)|신입\s*/\s*경력)"
+)
+RATE_LIMITED = r"Error\s*1015|You are being rate limited|Too Many Requests"
 
 
 def confirmation_current(check, now):
@@ -76,7 +87,7 @@ class Detail(HTMLParser):
     def handle_endtag(self, tag):
         if self.section and tag==self.section[0]:
             label=" ".join(" ".join(self.section[2]).split())
-            if self.headings and re.match(r"^(?:추천\s*(?:공고|채용)|비슷한\s*(?:공고|포지션)|연관\s*공고)",label):
+            if self.headings and re.search(WIDGETS, label):
                 if self.recommendation_index is None:self.recommendation_index=self.section[1]
             self.section=None
         if tag == "head":
@@ -191,9 +202,8 @@ def _wanted_details(data):
     return details
 
 
-def _apply_controls(parser):
+def _apply_controls(parser, end):
     """Active and disabled apply controls of this posting, not recommended ones."""
-    end = parser.recommendation_index
     labelled = [
         attrs
         for _, attrs, parts, position in parser.controls
@@ -246,10 +256,21 @@ def detail_status(html, url, now):
     prefix, body = (page[:start], page[start:]) if start >= 0 else ("", page)
     # Recommendation widgets are different postings, not this page's deadline,
     # even when their title is a plain <div> rather than an h2/h3 heading.
-    body = re.split(
-        r"이 기업의 취업 전략|추천\s*(?:공고|채용)|비슷한\s*(?:공고|포지션)|연관\s*공고",
-        body,
-    )[0]
+    body = re.split(WIDGETS, body)[0]
+    # The same cut in visible chunks, so widget buttons are not this posting's.
+    title_at = next(
+        (i for i, chunk in enumerate(parser.visible) if heading and heading in chunk), 0
+    )
+    cut = next(
+        (
+            i
+            for i, chunk in enumerate(parser.visible)
+            if i > title_at and re.search(WIDGETS, chunk)
+        ),
+        None,
+    )
+    if parser.recommendation_index is not None:
+        cut = min(cut, parser.recommendation_index) if cut is not None else parser.recommendation_index
     body = f"{body} {meta}".strip()
     # A closed badge can sit above the title; a false 'closed' only withholds
     # a posting, while a missed one mails an expired posting.
@@ -275,6 +296,8 @@ def detail_status(html, url, now):
         )
         location = match[1].strip() if match else ""
     structured_exp = job.get("experienceRequirements") or ""
+    if isinstance(structured_exp, list):
+        structured_exp = " ".join(str(item) for item in structured_exp)
     if isinstance(structured_exp, dict):
         structured_exp = structured_exp.get("monthsOfExperience")
         structured_exp = (
@@ -283,22 +306,21 @@ def detail_status(html, url, now):
             else ""
         )
     exp = experience(structured_exp)
-    if exp["kind"] == "unknown":
-        qualification = re.search(
-            r"(?:자격요건|지원자격|필수요건|필수사항|자격사항)\s*[:：]?\s*(.{1,3500}?)(?=우대사항|우대요건|복리후생|혜택|$)",
-            body,
-        )
-        explicit_exp = re.search(
-            r"경력\s*(?:무관|\d{1,2}\s*[~∼～-]\s*\d{1,2}\s*년|\d{1,2}\s*년\s*(?:이상|이하|↑|↓|\+)|신입\s*/\s*경력)",
-            body,
-        )
-        exp = experience(
-            qualification[1]
-            if qualification
-            else explicit_exp[0]
-            if explicit_exp
-            else ""
-        )
+    # The posting's own schema description is tied to this ID; the page body
+    # can also hold other postings, so it is only used after that.
+    own = re.sub(r"<[^>]+>", " ", str(job.get("description") or ""))
+    qualification = re.search(
+        r"(?:자격요건|지원자격|필수요건|필수사항|자격사항)\s*[:：]?\s*(.{1,3500}?)(?=우대사항|우대요건|복리후생|혜택|$)",
+        body,
+    )
+    for source in [
+        (re.search(EXPLICIT_EXPERIENCE, own) or [""])[0],
+        qualification[1] if qualification else "",
+        (re.search(EXPLICIT_EXPERIENCE, body) or [""])[0],
+    ]:
+        if exp["kind"] != "unknown":
+            break
+        exp = experience(source)
     details = {
         "job_location": location,
         "job_title": str(job.get("title") or " ".join(parser.headings)).strip(),
@@ -308,7 +330,7 @@ def detail_status(html, url, now):
         else "",
         "job_description": body[:12000],
     }
-    apply_controls, disabled = _apply_controls(parser)
+    apply_controls, disabled = _apply_controls(parser, cut)
     details["application_available"] = bool(apply_controls)
     details["application_blocked"] = bool(disabled) and not apply_controls
     details["application_evidence"] = (
@@ -437,6 +459,8 @@ def verify_posting(url, now):
                             }
                         target = location
                         continue
+                    if response.status_code == 429:
+                        return {"status": "unknown", "evidence": "rate_limited"}
                     if response.status_code in {404, 410}:
                         return {"status": "closed", "evidence": "detail_removed"}
                     if response.status_code != 200:
@@ -450,11 +474,11 @@ def verify_posting(url, now):
                             return {"status": "unknown", "evidence": "detail_too_large"}
                         chunks.append(chunk)
                     encoding = response.encoding or "utf-8"
-                    return detail_status(
-                        b"".join(chunks).decode(encoding, errors="replace"),
-                        original,
-                        now,
-                    )
+                    page = b"".join(chunks).decode(encoding, errors="replace")
+                    # Some sites answer a block page with status 200.
+                    if len(page) < 20000 and re.search(RATE_LIMITED, page):
+                        return {"status": "unknown", "evidence": "rate_limited"}
+                    return detail_status(page, original, now)
     except (httpx.HTTPError, ValueError, RecursionError, LookupError):
         pass
     return {"status": "unknown", "evidence": "detail_unavailable"}

@@ -333,6 +333,68 @@ class JobAlertTests(unittest.TestCase):
         self.assertIn("지원 버튼 미확인", self.mailer.sent[-1][2])
         self.assertIn("지원 버튼 미확인", self.mailer.html[-1])
 
+    def test_a_rate_limited_site_is_not_requested_again_in_the_same_run(self):
+        self.verify()
+        alert_id = self.save(platforms={"catch": {**RULE, "keywords": ""}})["alerts"][0]["id"]
+        self.searcher.return_value = [
+            {
+                "title": "데이터 분석가",
+                "url": f"https://www.catch.co.kr/NCS/RecruitInfoDetails/{i}",
+                "content": "서울",
+            }
+            for i in range(1, 30)
+        ]
+        self.verifier.return_value = {"status": "unknown", "evidence": "rate_limited"}
+        result = self.alerts.run_now({"id": alert_id, "send": False})
+        self.assertLessEqual(self.verifier.call_count, 8)  # the batch already in flight
+        self.assertEqual(result["collection"]["rate_limited_skipped"], 29 - self.verifier.call_count)
+        self.assertIn("rate_limited", result["status"])
+
+    def test_every_match_goes_to_the_sheet_while_mail_keeps_its_cap(self):
+        class Sheet:
+            def __init__(self):
+                self.rows, self.fail = [], False
+
+            def configured(self):
+                return True
+
+            def export(self, rows):
+                if self.fail:
+                    raise OSError("sheet down")
+                self.rows.append(rows)
+                return {"ok": True, "added": len(rows), "updated": 0}
+
+        sheet = Sheet()
+        self.alerts.sheet = sheet
+        self.verify()
+        alert_id = self.save(platforms={"wanted": {**RULE, "keywords": ""}}, max_results=1)[
+            "alerts"
+        ][0]["id"]
+        self.searcher.return_value = [
+            {
+                "title": "데이터 분석가",
+                "url": f"https://www.wanted.co.kr/wd/{i}",
+                "content": "서울",
+            }
+            for i in range(31, 34)
+        ]
+        preview = self.alerts.run_now({"id": alert_id, "send": False})
+        self.assertEqual(sheet.rows, [])  # a preview has no side effects
+        self.assertEqual(preview["collection"]["eligible"], 3)
+        result = self.alerts.run_now({"id": alert_id})
+        self.assertEqual(len(result["jobs"]), 1)
+        self.assertEqual(result["collection"]["detail_not_checked"], 0)
+        exported = sheet.rows[-1]
+        self.assertEqual(len(exported), 3)
+        self.assertEqual(sum(bool(row["mailed"]) for row in exported), 1)
+        self.assertIn("시트 3건", result["status"])
+        # The next run mails the next posting; the sheet keeps receiving matches.
+        sheet.fail = True
+        later = self.alerts.run_now({"id": alert_id})
+        self.assertTrue(later["mailed"])
+        self.assertIn("시트 저장 실패", later["status"])
+        self.assertEqual(self.alerts.status()["alerts"][0]["sent_count"], 2)
+
     def test_detail_budget_skips_unsupported_urls_and_checks_likely_jobs_first(self):
         from job_agent.core.job_status import detail_url
 
@@ -378,7 +440,7 @@ class JobAlertTests(unittest.TestCase):
         outcomes = {row["url"].rsplit("/", 1)[1]: row["outcome"] for row in trace["candidates"]}
         self.assertEqual(
             outcomes,
-            {"1": "unsupported_detail_url", "2": "detail_not_checked", "3": "selected"},
+            {"1": "unsupported_detail_url", "2": "detail_not_checked", "3": "matched"},
         )
         stored = json.loads(
             (Path(self.folder.name) / "result/job_alerts/alerts.json").read_text(
