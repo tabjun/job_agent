@@ -1,4 +1,12 @@
 -- Apply to a dedicated Supabase project. Resume/profile data never enters here.
+-- Owner-only operation: users are added in the dashboard (signups off) and
+-- alert_save also checks the Vault secret 'job_alert_allowed_emails'.
+-- Re-runnable: tables use if-not-exists, policies/functions are replaced.
+create table if not exists public.alert_schema (version integer primary key, applied_at timestamptz not null default now());
+alter table public.alert_schema enable row level security;
+revoke all on public.alert_schema from anon, authenticated;
+insert into public.alert_schema(version) values (2) on conflict do nothing;
+alter default privileges in schema public revoke execute on functions from public, anon, authenticated;
 create table if not exists public.alert_subscriptions (
   id uuid primary key default gen_random_uuid(),
   owner_id uuid not null references auth.users(id) on delete cascade,
@@ -14,6 +22,7 @@ create table if not exists public.alert_subscriptions (
 alter table public.alert_subscriptions enable row level security;
 revoke all on public.alert_subscriptions from anon, authenticated;
 grant select on public.alert_subscriptions to authenticated;
+drop policy if exists own_alerts on public.alert_subscriptions;
 create policy own_alerts on public.alert_subscriptions for select to authenticated
   using (owner_id = (select auth.uid()));
 
@@ -39,15 +48,31 @@ alter table public.alert_code_limits enable row level security;
 revoke all on public.alert_deliveries, public.alert_sent_urls, public.alert_code_limits from anon, authenticated;
 grant all on public.alert_subscriptions, public.alert_deliveries, public.alert_sent_urls, public.alert_code_limits to service_role;
 
+drop function if exists public.alert_save(uuid,text,jsonb,jsonb,int,boolean);
 create or replace function public.alert_save(p_id uuid, p_name text, p_platforms jsonb,
-  p_schedule jsonb, p_limit integer, p_enabled boolean) returns jsonb
+  p_schedule jsonb, p_limit integer, p_enabled boolean, p_consent_version text) returns jsonb
 language plpgsql security definer set search_path = '' as $$
-declare v_email text; v_id uuid; v_result jsonb;
+declare v_email text; v_allowed text; v_id uuid; v_result jsonb;
 begin
   select email into v_email from auth.users where id = auth.uid() and email_confirmed_at is not null;
   if v_email is null then raise exception 'verified identity required'; end if;
+  -- Same allowlist as the API (ALERT_ALLOWED_EMAILS), so a direct RPC call
+  -- with some other account's JWT cannot create subscriptions either.
+  select decrypted_secret into v_allowed from vault.decrypted_secrets where name='job_alert_allowed_emails';
+  if v_allowed is null or not lower(v_email) = any(
+       select btrim(x) from unnest(string_to_array(lower(v_allowed), ',')) as x) then
+    raise exception 'address not allowed';
+  end if;
+  if p_consent_version is distinct from 'job-alerts/v2' then raise exception 'consent required'; end if;
   perform pg_advisory_xact_lock(410201);
-  if p_platforms is null or p_schedule is null or jsonb_typeof(p_platforms) <> 'object' or jsonb_typeof(p_schedule) <> 'object'
+  -- The API validates conditions too; repeat the shape/size checks here.
+  if p_platforms is null or jsonb_typeof(p_platforms) <> 'object' or pg_column_size(p_platforms) > 16000
+     or exists(select 1 from jsonb_object_keys(p_platforms) k
+               where k not in ('catch','jobkorea','saramin','wanted','incruit'))
+     or exists(select 1 from jsonb_each(p_platforms) e
+               where jsonb_typeof(e.value) <> 'object' or jsonb_typeof(e.value->'role') <> 'string')
+     or p_name is null or length(p_name) not between 1 and 60
+     or p_schedule is null or jsonb_typeof(p_schedule) <> 'object'
      or not p_schedule ?& array['frequency','hour','weekday']
      or not p_schedule->>'frequency' = any(array['daily','weekdays','weekly'])
      or (p_schedule->>'hour')::int not between 0 and 23
@@ -55,8 +80,8 @@ begin
   if p_id is null then
     if (select count(*) from public.alert_subscriptions where owner_id=auth.uid()) >= 3
        or (select count(*) from public.alert_subscriptions) >= 50 then raise exception 'subscription capacity reached'; end if;
-    insert into public.alert_subscriptions(owner_id,email,name,platforms,schedule,max_results,enabled)
-      values(auth.uid(),v_email,p_name,p_platforms,p_schedule,p_limit,p_enabled) returning id into v_id;
+    insert into public.alert_subscriptions(owner_id,email,name,platforms,schedule,max_results,enabled,consent_version)
+      values(auth.uid(),v_email,p_name,p_platforms,p_schedule,p_limit,p_enabled,p_consent_version) returning id into v_id;
   else
     update public.alert_subscriptions set email=v_email,name=p_name,platforms=p_platforms,
       schedule=p_schedule,max_results=p_limit,enabled=p_enabled,revision=revision+1,updated_at=now()
@@ -80,10 +105,14 @@ create or replace function public.alert_reserve_code(p_keys text[]) returns bool
 language plpgsql security definer set search_path = '' as $$
 declare k text; v_count int; v_limit int; v_window interval;
 begin
-  if cardinality(p_keys) <> 4 then raise exception 'invalid rate keys'; end if;
+  if cardinality(p_keys) not between 1 and 4 then raise exception 'invalid rate keys'; end if;
   perform pg_advisory_xact_lock(410202);
   foreach k in array p_keys loop
-    v_limit := case when k like 'minute:%' then 1 when k like 'recipient:%' then 3 when k like 'ip:%' then 10 else 30 end;
+    -- Code requests and code checks are limited separately; checks per address
+    -- stop guessing a 6-8 digit code even though all visitors share one IP.
+    v_limit := case when k like 'minute:%' then 1 when k like 'recipient:%' then 3 when k like 'ip:%' then 10
+                    when k like 'verify:%' then 5 when k like 'verifyip:%' then 20 when k = 'verifyglobal' then 60
+                    else 30 end;
     v_window := case when k like 'minute:%' then interval '1 minute' else interval '1 hour' end;
     insert into public.alert_code_limits(key) values(k) on conflict do nothing;
     update public.alert_code_limits set count=0,window_start=now() where key=k and window_start < now()-v_window;
@@ -105,7 +134,9 @@ declare v_day date := (now() at time zone 'Asia/Seoul')::date;
   v_id uuid; v_result jsonb;
 begin
   if not exists(select 1 from public.alert_code_limits where key='cleanup:'||v_day::text) then
-    delete from public.alert_deliveries where completed_at<now()-interval '14 days';
+    -- 14 days from creation whatever the state, so stuck/failed rows that
+    -- hold an address and mail body do not outlive the stated retention.
+    delete from public.alert_deliveries where created_at<now()-interval '14 days';
     delete from public.alert_sent_urls old using (
       select subscription_id,url,row_number() over(partition by subscription_id order by sent_at desc,url) as rank
       from public.alert_sent_urls
@@ -120,9 +151,9 @@ begin
        ((s.schedule->>'frequency')='weekdays' and v_dow<5) or
        ((s.schedule->>'frequency')='weekly' and (s.schedule->>'weekday')::int=v_dow))
     on conflict (subscription_id,slot) do nothing;
-  update public.alert_deliveries set state='unknown',error_code='smtp_outcome_unconfirmed'
+  update public.alert_deliveries set state='unknown',error_code='smtp_outcome_unconfirmed',completed_at=now()
     where state='sending' and payload->>'transport'='smtp' and lease_until<now();
-  update public.alert_deliveries set state='failed',error_code='attempts_exhausted'
+  update public.alert_deliveries set state='failed',error_code='attempts_exhausted',completed_at=now()
     where attempts>=3 and state in ('collecting','prepared','sending') and lease_until<now();
   select d.id into v_id from public.alert_deliveries d
     join public.alert_subscriptions s on s.id=d.subscription_id and s.enabled and s.revision=d.revision
@@ -133,7 +164,9 @@ begin
     order by d.created_at for update of d skip locked limit 1;
   if v_id is null then return null; end if;
   update public.alert_deliveries set attempts=attempts+1,lease_until=now()+interval '6 minutes',
-    state=case when payload is null then 'collecting' else 'prepared' end where id=v_id;
+    -- 'sending' stays visible so the worker resends the stored payload under
+    -- the same provider idempotency key instead of re-checking and cancelling.
+    state=case when payload is null then 'collecting' when state='sending' then 'sending' else 'prepared' end where id=v_id;
   select jsonb_build_object('delivery',to_jsonb(d),'subscription',to_jsonb(s),
     'sent_urls',coalesce((select jsonb_agg(url) from public.alert_sent_urls where subscription_id=s.id),'[]'))
     into v_result from public.alert_deliveries d join public.alert_subscriptions s on s.id=d.subscription_id where d.id=v_id;
@@ -172,7 +205,8 @@ begin
     insert into public.alert_sent_urls(subscription_id,url)
       select v_job.subscription_id,jsonb_array_elements_text(v_job.payload->'urls') on conflict do nothing;
   end if;
-  update public.alert_deliveries set state=case when p_state='retry' then 'prepared' else p_state end,
+  update public.alert_deliveries set state=case when p_state='retry' and v_job.state='sending' then 'sending'
+      when p_state='retry' then 'prepared' else p_state end,
     lease_until=case when p_state='retry' then now()+interval '5 minutes' else null end,
     completed_at=case when p_state='retry' then null else now() end,
     provider_id=p_provider_id,error_code=p_error where id=p_id;
@@ -188,8 +222,8 @@ begin
   return true;
 end $$;
 
-revoke all on function public.alert_save(uuid,text,jsonb,jsonb,int,boolean), public.alert_delete(uuid) from public, anon;
-grant execute on function public.alert_save(uuid,text,jsonb,jsonb,int,boolean), public.alert_delete(uuid) to authenticated;
+revoke all on function public.alert_save(uuid,text,jsonb,jsonb,int,boolean,text), public.alert_delete(uuid) from public, anon;
+grant execute on function public.alert_save(uuid,text,jsonb,jsonb,int,boolean,text), public.alert_delete(uuid) to authenticated;
 revoke all on function public.alert_reserve_code(text[]),public.alert_claim(),public.alert_prepare(uuid,jsonb),
   public.alert_can_send(uuid),public.alert_finish(uuid,text,text,text),public.alert_unsubscribe(uuid) from public,anon,authenticated;
 grant execute on function public.alert_reserve_code(text[]),public.alert_claim(),public.alert_prepare(uuid,jsonb),
