@@ -419,8 +419,12 @@ class ServerWorker:
                 # a direct RPC call rather than this API.
                 platforms, schedule, limit = JobAlerts._conditions(subscription)
                 stats = {}
+                # The worker has a 300-second limit: bounded checks, stop at the cap.
                 jobs, errors = JobAlerts(
-                    searcher=self.searcher, verifier=self.verifier, clock=self.clock
+                    searcher=self.searcher,
+                    verifier=self.verifier,
+                    clock=self.clock,
+                    detail_budget=160,
                 ).collect(
                     {
                         **subscription,
@@ -430,6 +434,7 @@ class ServerWorker:
                         "sent_urls": claim.get("sent_urls", []),
                     },
                     stats,
+                    stop_at_limit=True,
                 )
                 if not jobs:
                     if not errors:

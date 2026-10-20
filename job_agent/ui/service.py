@@ -287,7 +287,9 @@ class WorkspaceService:
                 }
                 jobs, errors = JobAlerts(
                     searcher=self._searcher, verifier=self._verifier
-                ).collect({"platforms": rules, "max_results": 100}, stats)
+                ).collect(
+                    {"platforms": rules, "max_results": 100}, stats, stop_at_limit=True
+                )
                 for job in jobs:
                     job.update(
                         content=job["excerpt"],

@@ -207,6 +207,56 @@ class PostingStatusTests(unittest.TestCase):
         other = detail_status(page(id=1), wanted, NOW)
         self.assertNotEqual(other.get("evidence"), "wanted_active")
 
+    def test_bracketed_experience_is_read_even_with_a_requirements_section(self):
+        for body in [
+            "<h1>데이터 분석가</h1><p>경력(3년 이상)</p><p>마감일 2026.11.30</p>",
+            "<h1>데이터 분석가</h1><p>자격요건 SQL 활용 우대사항 없음</p>"
+            "<p>경력(3년 이상)</p><p>마감일 2026.11.30</p>",
+        ]:
+            with self.subTest(body=body):
+                row = detail_status(body, URL, NOW)
+                self.assertEqual(row["experience"]["min_years"], 3)
+
+    def test_catch_uses_its_own_schema_and_cuts_viewed_together_widgets(self):
+        catch = "https://www.catch.co.kr/NCS/RecruitInfoDetails/560629"
+        html = (
+            schema(
+                title="[골프존] 데이터 사이언티스트 채용",
+                validThrough="2026-11-29T23:59:59+09:00",
+                experienceRequirements=["경력"],
+                description="[지원자격]\n경력 : 경력(2년 이상)\n근무지 : 서울 강남구",
+            )
+            + "<h1>[골프존] 데이터 사이언티스트 채용</h1><p>~ 11.29(일) 24시</p>"
+            "<div>방금 본 공고와 비슷한 공고</div><p>다른기업 경력 10년 이상</p>"
+            "<button>지원하기</button>"
+            "<div>다른 회원이 함께 본 공고!</div><p>마감되었습니다</p>"
+        )
+        row = detail_status(html, catch, NOW)
+        self.assertEqual(row["status"], "open")
+        self.assertEqual(row["experience"]["min_years"], 2)
+        self.assertFalse(row["application_available"])
+
+    def test_rate_limited_pages_are_reported_as_such(self):
+        original = httpx.Client
+        for response in [
+            httpx.Response(429),
+            httpx.Response(
+                200,
+                headers={"content-type": "text/html"},
+                text="<title>Access denied</title><p>Error 1015</p><p>You are being rate limited</p>",
+            ),
+        ]:
+            with patch(
+                "job_agent.core.job_status.httpx.Client",
+                side_effect=lambda response=response, **kw: original(
+                    transport=httpx.MockTransport(lambda _: response), **kw
+                ),
+            ):
+                self.assertEqual(
+                    verify_posting(URL, NOW),
+                    {"status": "unknown", "evidence": "rate_limited"},
+                )
+
     def test_same_posting_redirect_is_followed_once(self):
         requests = []
         target = "https://www.catch.co.kr/NCS/RecruitInfoDetails/123"

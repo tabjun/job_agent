@@ -24,6 +24,7 @@ from urllib.parse import urlsplit
 from uuid import uuid4
 
 from job_agent.alerts.mail import compose, posting_fields
+from job_agent.alerts.sheet import SheetExporter, sheet_rows
 from job_agent.core.job_match import (
     DEFAULT_EXPERIENCE,
     merge_cross_platform,
@@ -58,7 +59,7 @@ CODE_ATTEMPTS = 5
 RESEND_SECONDS = 60
 CODES_PER_HOUR = 5
 MAX_ALERTS = 20
-SENT_MEMORY = 1000
+SENT_MEMORY = 5000
 EMAIL = re.compile(r"^[^@\s]{1,64}@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$")
 
 
@@ -188,9 +189,10 @@ def file_lock(path, timeout, stale, busy):
 
 
 class JobAlerts:
-    # Detail pages fetched per run. Candidates are interleaved by platform, so
-    # each platform gets an equal share and unused shares pass to the others.
-    DETAIL_BUDGET = 160
+    # Detail pages fetched per run; None checks every candidate (local runs,
+    # whose matches all go to the sheet). Time-limited callers pass a number.
+    # Candidates are interleaved by platform, so a budget is shared equally.
+    DETAIL_BUDGET = None
 
     def __init__(
         self,
@@ -200,6 +202,8 @@ class JobAlerts:
         clock=None,
         verifier=None,
         supported=None,
+        sheet=None,
+        detail_budget=None,
     ):
         self.paths = paths or ProjectPaths()
         self.folder = self.paths.results / "job_alerts"
@@ -213,6 +217,9 @@ class JobAlerts:
         self.supported = supported or (
             detail_url if self.verifier is verify_posting else bool
         )
+        self.sheet = sheet or SheetExporter()
+        if detail_budget is not None:
+            self.DETAIL_BUDGET = detail_budget
 
     # storage -------------------------------------------------------------
     def _load(self):
@@ -246,7 +253,7 @@ class JobAlerts:
         return file_lock(
             self.folder / ".run.lock",
             timeout=0,
-            stale=900,
+            stale=3600,  # every candidate is checked, which can take a while
             busy="다른 공고 알림 실행이 진행 중입니다.",
         )
 
@@ -433,11 +440,13 @@ class JobAlerts:
         return self.status()
 
     # running -------------------------------------------------------------
-    def collect(self, alert, diagnostics=None, trace=None):
+    def collect(self, alert, diagnostics=None, trace=None, stop_at_limit=False):
         """Search each platform with its own conditions; drop already-mailed URLs.
 
         ``trace`` (a list) receives one outcome per candidate URL so a run's
         omissions can be explained later; it is kept out of ``diagnostics``.
+        Every confirmed match is returned unless ``stop_at_limit`` asks to stop
+        once ``max_results`` are found (time-limited callers).
         """
         seen = {canonical_url(url) for url in alert.get("sent_urls", [])}
         jobs, errors = {}, []
@@ -555,7 +564,10 @@ class JobAlerts:
         ordered = diverse_jobs(ranked, len(ranked))
         selected = []
         limit = alert.get("max_results", 10)
-        budget = self.DETAIL_BUDGET
+        budget = len(ordered) if self.DETAIL_BUDGET is None else self.DETAIL_BUDGET
+        # A site that starts refusing requests is left alone for the rest of
+        # the run rather than asked again (and blocked for longer).
+        limited = set()
 
         def verify(job):
             try:
@@ -570,10 +582,19 @@ class JobAlerts:
 
         with ThreadPoolExecutor(max_workers=4) as pool:
             for offset in range(0, min(len(ordered), budget), 8):
-                batch = ordered[offset : min(offset + 8, budget)]
+                batch = []
+                for job in ordered[offset : min(offset + 8, budget)]:
+                    if job["site"] in limited:
+                        counts["rate_limited_skipped"] += 1
+                        counts["detail_checked"] += 1  # decided: not fetched
+                        note(job["site"], job["url"], job["title"], "rate_limited_skipped")
+                    else:
+                        batch.append(job)
                 checks = list(pool.map(verify, batch))
                 counts["detail_checked"] += len(batch)
                 for job, check in zip(batch, checks):
+                    if check.get("evidence") == "rate_limited":
+                        limited.add(job["site"])
                     if check.get("status") == "closed":
                         counts["detail_closed"] += 1
                         note(job["site"], job["url"], job["title"], "detail_closed")
@@ -670,7 +691,7 @@ class JobAlerts:
                 before_merge = len(selected)
                 selected = merge_cross_platform(selected)
                 counts["cross_platform_duplicate"] += before_merge - len(selected)
-                if len(selected) >= limit:
+                if stop_at_limit and len(selected) >= limit:
                     break
         counts["detail_not_checked"] = len(ordered) - counts["detail_checked"]
         for job in ordered[counts["detail_checked"] :]:
@@ -680,11 +701,12 @@ class JobAlerts:
                 job["site"],
                 job["url"],
                 job["title"],
-                "selected" if index < limit else "over_limit",
+                "matched" if index < limit or not stop_at_limit else "over_limit",
             )
             for url in job.get("alternate_urls", []):
                 note(job["site"], url, job["title"], "cross_platform_duplicate")
-        selected = selected[:limit]
+        if stop_at_limit:
+            selected = selected[:limit]
         if trace is not None:
             trace.extend(outcomes.values())
         if diagnostics is not None:
@@ -693,7 +715,7 @@ class JobAlerts:
                     **counts,
                     "candidates": len(candidates),
                     "eligible": counts["requirements_confirmed"] - counts["cross_platform_duplicate"],
-                    "selected": len(selected),
+                    "selected": min(len(selected), limit),
                     "limit": alert.get("max_results", 10),
                     "complete": False,
                 }
@@ -736,8 +758,10 @@ class JobAlerts:
         collection, trace = {}, []
         jobs, errors = self.collect(alert, collection, trace)
         self._write_trace(alert_id, collection, trace)
+        limit = alert.get("max_results", 10)
         if not send:
-            status = f"새 공고 {len(jobs)}건 (미리보기 · 미발송)"
+            status = f"조건 통과 {len(jobs)}건 중 메일 {min(len(jobs), limit)}건 (미리보기 · 미발송)"
+            jobs = jobs[:limit]
             status += self._held_summary(collection)
             if errors:
                 status += " · " + "; ".join(errors)
@@ -768,7 +792,11 @@ class JobAlerts:
                 if confirmation_current(j.get("status_check", {}), self.clock())
             ]
             collection["closed_before_send"] = len(jobs) - len(current)
-            jobs = current
+            # Every current match goes to the sheet; the mail keeps its cap and
+            # the rest stay unsent, so later mails pick them up in order.
+            matches = current
+            jobs = matches[:limit]
+            collection["matched"] = len(matches)
             collection["selected"] = len(jobs)
             if stored.get("revision") != alert.get("revision"):
                 status = "검색 중 설정이 바뀌어 이번 발송을 건너뜀"
@@ -802,6 +830,15 @@ class JobAlerts:
                     ]
                 )[-SENT_MEMORY:]
             self._save(data)
+        sheet_note = self._export_sheet(stored, matches, jobs if mailed else [])
+        if sheet_note:
+            status += sheet_note
+            with self._state():
+                data = self._load()
+                for item in data["alerts"]:
+                    if item["id"] == alert_id:
+                        item["last_status"] = status
+                self._save(data)
         return {
             "id": alert_id,
             "status": status,
@@ -809,6 +846,23 @@ class JobAlerts:
             "jobs": jobs,
             "collection": collection,
         }
+
+    def _export_sheet(self, alert, matches, mailed_jobs):
+        """Write every match to the owner's sheet; never blocks the mail."""
+        if not matches or not self.sheet.configured():
+            return ""
+        mailed = {
+            url for j in mailed_jobs for url in [j["url"], *j.get("alternate_urls", [])]
+        }
+        try:
+            self.sheet.export(
+                sheet_rows(
+                    alert["name"], matches, mailed, self.clock().date().isoformat()
+                )
+            )
+        except Exception as exc:  # noqa: BLE001 - the mail result stands on its own
+            return f" · 시트 저장 실패: {type(exc).__name__}"
+        return f" · 시트 {len(matches)}건 저장"
 
     @staticmethod
     def _held_summary(collection):
@@ -819,6 +873,10 @@ class JobAlerts:
             parts.append(f"접수상태 미확인 {collection['status_unverified']}건 보류")
         if collection.get("requirements_held"):
             parts.append(f"조건 근거 미확인 {collection['requirements_held']}건 보류")
+        if collection.get("rate_limited_skipped"):
+            parts.append(
+                f"사이트 접속 제한(rate_limited)으로 {collection['rate_limited_skipped']}건 건너뜀"
+            )
         if collection.get("detail_not_checked"):
             parts.append(f"상세 미확인 {collection['detail_not_checked']}건")
         return "".join(" · " + part for part in parts)
