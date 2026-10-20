@@ -22,6 +22,12 @@ RUNTIME = [
     "core/storage.py",
     "core/postings.py",
     "core/native_jobs.py",
+    "core/job_match.py",
+    "core/job_status.py",
+    "alerts/__init__.py",
+    "alerts/mail.py",
+    "alerts/service.py",
+    "alerts/cloud.py",
     "documents/__init__.py",
     "documents/source.py",
     "documents/profile.py",
@@ -36,6 +42,7 @@ RUNTIME = [
     "ui/service.py",
     "hosting/__init__.py",
     "hosting/handler.py",
+    "hosting/alert_handler.py",
 ]
 
 
@@ -107,6 +114,9 @@ def build(output=None, privacy_contact=""):
         "fflate.LICENSE.txt",
         "tutorials.js",
         "alerts.js",
+        "job-alerts.html",
+        "subscription.css",
+        "subscription.js",
     ]:
         shutil.copy2(static / name, public / name)
     (public / "tutorials").mkdir()
@@ -149,6 +159,14 @@ def build(output=None, privacy_contact=""):
         "class handler(PublicHandler):\n    pass\n",
         encoding="utf-8",
     )
+    for filename, handler_name in [
+        ("subscribe.py", "SubscriptionHandler"),
+        ("alert-worker.py", "WorkerHandler"),
+    ]:
+        (api / filename).write_text(
+            f"from job_agent.hosting.alert_handler import {handler_name} as PublicHandler\n\nclass handler(PublicHandler):\n    pass\n",
+            encoding="utf-8",
+        )
     for name in ["vercel.json", "requirements.txt", "environment.example"]:
         shutil.copy2(ROOT / "deploy" / "vercel" / name, output / name)
     (output / ".python-version").write_text("3.12\n", encoding="utf-8")

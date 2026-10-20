@@ -6,6 +6,14 @@
     "api/run.py": {
       "maxDuration": 10,
       "excludeFiles": "public/**"
+    },
+    "api/subscribe.py": {
+      "maxDuration": 30,
+      "excludeFiles": "public/**"
+    },
+    "api/alert-worker.py": {
+      "maxDuration": 300,
+      "excludeFiles": "public/**"
     }
   },
   "headers": [

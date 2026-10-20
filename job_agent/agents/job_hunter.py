@@ -1,4 +1,5 @@
 import asyncio
+from datetime import datetime
 from langchain_core.tools import tool
 from langchain_community.tools.tavily_search import TavilySearchResults
 from job_agent.core.engine import LangGraphAgentEngine
@@ -41,6 +42,7 @@ async def search_jobs(role: str, experience: str, location: str, keywords: str):
     경력 요청은 결과에 보존하지만 검증되지 않은 조건을 충족했다고 단정하지 않습니다.
     """
     from job_agent.ui.service import SITES, WorkspaceService
+    from job_agent.core.job_match import requested_experience
 
     service = WorkspaceService(ephemeral=True)
     try:
@@ -54,10 +56,13 @@ async def search_jobs(role: str, experience: str, location: str, keywords: str):
                 "keywords": keywords,
                 "exclude": "라벨링, 수집알바, 단순입력, labeling",
                 "sites": list(SITES),
+                "verify_requirements": True,
+                "experience": requested_experience(experience),
             },
         )
         return [
-            {**row, "experience_requested": experience, "experience_verified": False}
+            {**row, "experience_requested": experience,
+             "experience_verified": row.get("requirements_check", {}).get("decision") == "pass"}
             for row in result["jobs"]
         ]
     finally:
@@ -101,14 +106,14 @@ async def save_job_search_report(
 # =====================================================================
 HUNTER_PROMPT = """
 당신은 '데이터 전문 커리어 헤드헌터'입니다. 
-당신의 임무는 사용자가 원하는 **데이터 분석가(DA) 및 데이터 사이언티스트(DS)** 직무의 공고를 완벽하게 찾아내어 리포트를 만드는 것입니다.
+당신의 임무는 사용자가 원하는 **데이터 분석가(DA) 및 데이터 사이언티스트(DS)** 직무의 공고를 공개 원문 근거로 확인하고 리포트를 만드는 것입니다. 전체 공고를 찾았다고 주장하지 않습니다.
 
 [필수 지침 - 토큰 낭비 방지 및 정확도 향상]:
 1. **엄격한 1차 스크리닝 (매우 중요)**:
    - `search_jobs` 결과 중 사용자 조건({experience}, {location}, {keywords})에 **완벽히 부합**하는 공고만 최대 5~7개 선별하세요.
    - **경력 검증**: 사용자가 '3년 이하'를 원하는데 공고가 '5년 이상'이나 '시니어'를 요구하면 **무조건 제외**하세요. (예: CJ Olive Young 등 대형 공고라도 요건 불일치 시 과감히 삭제)
    - **직무 검증**: 단순히 기업 이름에 '데이터'가 들어가는 것이 아니라, 실제 '데이터 분석/사이언스' 업무인지 확인하세요. 오늘의집 등 특정 시점에 해당 직무를 뽑지 않는 기업은 검색 결과에서 제외하거나 검증하세요.
-   - **최신성**: 공고 내용에 '마감', '종료'가 언급된 경우 즉시 제외하세요.
+   - **최신성**: 공통 수집기의 접수상태·경력 검증 결과와 근거를 사용하세요. '채용 시 마감' 같은 단어만으로 종료를 추정하지 마세요.
 
 2. **선별 후 심층 분석**:
    - 1차 스크리닝을 통과한 **정예 공고(최대 7개)**에 대해서만 `get_financial_health`와 `get_company_reputation`을 호출하세요.
@@ -125,7 +130,7 @@ HUNTER_PROMPT = """
    - **평판 상세**: 총점(X.X/5.0), 장점, 단점을 명확히 구분하세요.
 
 [상세 조건]:
-- 현재 날짜: 2026-05-11
+- 현재 날짜: {current_date}
 - 경력 사항: {experience}
 - 희망 지역: {location}
 - 추가 키워드: {keywords}
@@ -149,7 +154,8 @@ async def run_job_hunter():
     print("-" * 60)
 
     final_prompt = HUNTER_PROMPT.format(
-        experience=experience, location=location, keywords=keywords
+        experience=experience, location=location, keywords=keywords,
+        current_date=datetime.now().date().isoformat(),
     )
 
     agent = LangGraphAgentEngine(

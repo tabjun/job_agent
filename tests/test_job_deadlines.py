@@ -17,13 +17,17 @@ class AlertDeadlineTests(unittest.TestCase):
                 ProjectPaths(Path(folder)),
                 searcher=lambda *_: rows,
                 clock=lambda: datetime(2026, 10, 20, 9),
-                verifier=lambda url, now: detail_status(
-                    html
-                    if html is not None
-                    else "<p>접수기간 2026.07.01 ~ 2026.11.30</p>",
-                    url,
-                    now,
-                ),
+                verifier=lambda url, now: {
+                    "job_location": "서울",
+                    "experience": {"kind": "any"},
+                    **detail_status(
+                        html
+                        if html is not None
+                        else "<p>근무지역 서울 지원자격 경력무관 접수기간 2026.07.01 ~ 2026.11.30</p><button>지원하기</button>",
+                        url,
+                        now,
+                    ),
+                },
             )
             return alerts.collect(
                 {

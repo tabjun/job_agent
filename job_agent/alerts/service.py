@@ -24,6 +24,12 @@ from urllib.parse import urlsplit
 from uuid import uuid4
 
 from job_agent.alerts.mail import compose, posting_fields
+from job_agent.core.job_match import (
+    DEFAULT_EXPERIENCE,
+    merge_cross_platform,
+    requirements,
+    validate_experience,
+)
 from job_agent.core.job_status import confirmation_current, verify_posting
 from job_agent.core.paths import ProjectPaths
 from job_agent.core.postings import (
@@ -323,7 +329,8 @@ class JobAlerts:
         return {"removed": email}
 
     # conditions ----------------------------------------------------------
-    def _conditions(self, payload):
+    @staticmethod
+    def _conditions(payload):
         platforms = payload.get("platforms")
         if not isinstance(platforms, dict) or not platforms:
             raise ValueError("알림을 받을 플랫폼을 하나 이상 선택하세요.")
@@ -336,6 +343,10 @@ class JobAlerts:
                 "location": _text(rule, "location", 100),
                 "keywords": _text(rule, "keywords", 300),
                 "exclude": _text(rule, "exclude", 300),
+                "require_keywords": rule.get("require_keywords") is True,
+                "experience": validate_experience(
+                    rule.get("experience", DEFAULT_EXPERIENCE)
+                ),
             }
             if not entry["role"] and not entry["keywords"]:
                 raise ValueError(f"{NAMES[site]}: 직무 또는 키워드를 입력하세요.")
@@ -419,7 +430,7 @@ class JobAlerts:
                     result = self.searcher(query, [SITES[site]])
                     if not isinstance(result, list):
                         raise TypeError("Invalid search results")
-                    rows.extend(result[:20])
+                    rows.extend(result[:80])
                 except Exception as exc:  # noqa: BLE001 - preserve other queries and platforms
                     failed.append(type(exc).__name__)
             if failed:
@@ -464,8 +475,7 @@ class JobAlerts:
                     continue
                 hits = [t for t in wanted if matches(t, body)]
                 if wanted and not hits:
-                    counts["missing_keyword_evidence"] += 1
-                    continue
+                    counts["keyword_deferred"] += 1
                 keep, region = region_check(body, regions) if regions else (True, "")
                 if not keep:
                     counts["region"] += 1
@@ -477,6 +487,13 @@ class JobAlerts:
                     "excerpt": " ".join(content.split())[:240],
                     "matched_keywords": hits,
                     "region": region if regions else None,
+                    "rule": {
+                        **rule,
+                        "experience": rule.get("experience", DEFAULT_EXPERIENCE),
+                    },
+                    "requirements_card": row.get("requirements_card", {})
+                    if row.get("retrieval_source") == "native_search"
+                    else {},
                     **posting_fields({**row, "title": title, "content": content}),
                 }
         ranked = sorted(
@@ -510,12 +527,84 @@ class JobAlerts:
                     elif check.get("status") != "open":
                         counts["status_unverified"] += 1
                     else:
-                        confirmed = {**job, "status_check": check}
+                        card = job.get("requirements_card", {})
+                        check = dict(check)
+                        for field in ("job_title", "job_location"):
+                            if not check.get(field) and card.get(field):
+                                check[field] = card[field]
+                                check["condition_source"] = "detail_and_native_card"
+                        if (check.get("experience") or {}).get(
+                            "kind", "unknown"
+                        ) == "unknown" and card.get("experience"):
+                            check["experience"] = card["experience"]
+                            check["condition_source"] = "detail_and_native_card"
+                        if (
+                            not check.get("application_available")
+                            and not check.get("application_blocked")
+                            and card.get("application_available")
+                        ):
+                            check["application_available"] = True
+                            check["application_evidence"] = (
+                                "현재 공개 검색 카드의 지원 버튼 확인"
+                            )
+                            check["condition_source"] = "detail_and_native_card"
+                        evidence = str(check.get("job_description") or "")
+                        if evidence:
+                            full_body = job["title"] + " " + evidence
+                            wanted = terms(job["rule"]["keywords"])
+                            hits = [t for t in wanted if matches(t, full_body)]
+                            if (
+                                job["rule"].get("require_keywords") is True
+                                and wanted
+                                and not hits
+                            ):
+                                counts["missing_keyword_evidence"] += 1
+                                continue
+                            if any(
+                                matches(t, full_body)
+                                for t in terms(job["rule"]["exclude"])
+                            ):
+                                counts["excluded_keyword"] += 1
+                                continue
+                            job["matched_keywords"] = hits
+                        elif (
+                            terms(job["rule"]["keywords"])
+                            and not job["matched_keywords"]
+                            and job["rule"].get("require_keywords") is True
+                        ):
+                            counts["missing_keyword_evidence"] += 1
+                            continue
+                        match = requirements({**job, **check}, job["rule"])
+                        if match["decision"] != "pass":
+                            counts[match["reason"]] += 1
+                            counts[
+                                "requirements_held"
+                                if match["decision"] == "hold"
+                                else "requirements_rejected"
+                            ] += 1
+                            continue
+                        confirmed = {
+                            **job,
+                            "status_check": {
+                                k: v for k, v in check.items() if k != "job_description"
+                            },
+                        }
+                        confirmed.pop("rule", None)
+                        confirmed.pop("requirements_card", None)
+                        confirmed["requirements_check"] = match
+                        counts["requirements_confirmed"] += 1
+                        if check.get("job_title"):
+                            confirmed["role"] = check["job_title"]
+                        if check.get("company"):
+                            confirmed["company"] = check["company"]
                         if check.get("deadline"):
                             confirmed["period"] = "~ " + check["deadline"]
                         elif check.get("period"):
                             confirmed["period"] = check["period"]
                         selected.append(confirmed)
+                before_merge = len(selected)
+                selected = merge_cross_platform(selected)
+                counts["cross_platform_duplicate"] += before_merge - len(selected)
                 if len(selected) >= limit:
                     break
         counts["detail_not_checked"] = len(ordered) - counts["detail_checked"]
@@ -524,7 +613,8 @@ class JobAlerts:
             diagnostics.update(
                 {
                     **counts,
-                    "eligible": len(ranked),
+                    "candidates": len(ranked),
+                    "eligible": counts["requirements_confirmed"] - counts["cross_platform_duplicate"],
                     "selected": len(selected),
                     "limit": alert.get("max_results", 10),
                     "complete": False,
@@ -548,6 +638,8 @@ class JobAlerts:
         jobs, errors = self.collect(alert, collection)
         if not send:
             status = f"새 공고 {len(jobs)}건 (미리보기 · 미발송)"
+            if collection.get("requirements_held"):
+                status += f" · 조건/지원경로 근거 미확인 {collection['requirements_held']}건 보류"
             if collection.get("status_unverified"):
                 status += f" · 접수상태 미확인 {collection['status_unverified']}건 보류"
             if errors:
@@ -599,6 +691,8 @@ class JobAlerts:
                     status = f"메일 발송 실패: {type(exc).__name__}"
             if collection.get("status_unverified"):
                 status += f" · 접수상태 미확인 {collection['status_unverified']}건 보류"
+            if collection.get("requirements_held"):
+                status += f" · 조건/지원경로 근거 미확인 {collection['requirements_held']}건 보류"
             if errors and not status.startswith("검색 실패"):
                 status += " · " + "; ".join(errors)
             stored["last_run_at"] = self.clock().isoformat(timespec="seconds")
@@ -606,7 +700,12 @@ class JobAlerts:
             stored["last_collection"] = collection
             if mailed:
                 stored["sent_urls"] = (
-                    stored.get("sent_urls", []) + [j["url"] for j in jobs]
+                    stored.get("sent_urls", [])
+                    + [
+                        url
+                        for j in jobs
+                        for url in [j["url"], *j.get("alternate_urls", [])]
+                    ]
                 )[-SENT_MEMORY:]
             self._save(data)
         return {

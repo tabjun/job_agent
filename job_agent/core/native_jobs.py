@@ -10,6 +10,9 @@ from urllib.parse import urlencode, urljoin, urlsplit
 
 import httpx
 
+from job_agent.core.job_match import experience
+from job_agent.core.postings import canonical_url
+
 
 class Node:
     def __init__(self, tag="root", attrs=(), parent=None):
@@ -90,9 +93,69 @@ def parse_cards(site, html):
                 href = urljoin("https://www.saramin.co.kr", link.attrs.get("href", ""))
                 if urlsplit(href).hostname != "www.saramin.co.kr":
                     continue
+                condition = next(
+                    (n for n in inner if n.has_class("job_condition")), None
+                )
+                location = (
+                    next(
+                        (
+                            n.text()
+                            for n in condition.children
+                            if isinstance(n, Node) and n.tag == "span"
+                        ),
+                        "",
+                    )
+                    if condition
+                    else ""
+                )
+                apply = any(
+                    n.tag in {"a", "button"}
+                    and re.fullmatch(r"(?:입사|홈페이지)?\s*지원(?:하기)?", n.text())
+                    and "disabled" not in n.attrs
+                    and n.attrs.get("aria-disabled") != "true"
+                    for n in inner
+                )
                 rows.append(
                     {
                         "title": link.attrs.get("title") or link.text(),
+                        "company_name": employer.text(),
+                        "url": href,
+                        "content": card.text()[:10000],
+                        "retrieval_source": "native_search",
+                        "requirements_card": {
+                            "job_location": location,
+                            "experience": experience(
+                                condition.text() if condition else ""
+                            ),
+                            "job_title": link.attrs.get("title") or link.text(),
+                            "application_available": apply,
+                        },
+                    }
+                )
+    elif site == "incruit":
+        for card in (n for n in nodes if n.tag == "ul" and n.has_class("c_row")):
+            inner = list(card.nodes())
+            employer = next(
+                (n for n in inner if n.tag == "a" and n.has_class("cpname")), None
+            )
+            link = next(
+                (
+                    n
+                    for n in inner
+                    if n.tag == "a"
+                    and re.search(
+                        r"/jobdb_info/jobpost\.asp\?job=\d+", n.attrs.get("href", "")
+                    )
+                ),
+                None,
+            )
+            if link and employer:
+                href = urljoin("https://job.incruit.com", link.attrs["href"])
+                if urlsplit(href).hostname != "job.incruit.com":
+                    continue
+                rows.append(
+                    {
+                        "title": link.text(),
                         "company_name": employer.text(),
                         "url": href,
                         "content": card.text()[:10000],
@@ -139,31 +202,59 @@ def parse_cards(site, html):
 
 
 def native_search(query, domain):
-    site = {"jobkorea.co.kr": "jobkorea", "saramin.co.kr": "saramin"}.get(domain)
+    site = {
+        "jobkorea.co.kr": "jobkorea",
+        "saramin.co.kr": "saramin",
+        "incruit.com": "incruit",
+    }.get(domain)
     if not site:
         return []
     keyword = re.sub(r"\s+채용$", "", query).strip()
     # Location is checked on the returned card; do not AND every region in the search box.
     keyword = re.sub(r"\s+(?:서울|경기|판교)(?=\s|$)", "", keyword).strip()
     keyword = keyword.replace("분석가", "분석")
-    base, parameter = (
-        ("https://www.jobkorea.co.kr/Search/", "stext")
-        if site == "jobkorea"
-        else ("https://www.saramin.co.kr/zf_user/search", "searchword")
-    )
-    with (
-        httpx.Client(timeout=12, follow_redirects=False, trust_env=False) as client,
-        client.stream("GET", base + "?" + urlencode({parameter: keyword})) as response,
-    ):
-        if response.status_code != 200:
-            return []
-        chunks, size = [], 0
-        for chunk in response.iter_bytes():
-            size += len(chunk)
-            if size > 3_000_000:
-                return []
-            chunks.append(chunk)
-    rows = parse_cards(site, b"".join(chunks).decode("utf-8", errors="replace"))
+    base, parameter, page_parameter = {
+        "jobkorea": ("https://www.jobkorea.co.kr/Search/", "stext", "Page_No"),
+        "saramin": (
+            "https://www.saramin.co.kr/zf_user/search",
+            "searchword",
+            "recruitPage",
+        ),
+        "incruit": ("https://search.incruit.com/list/search.asp", "kw", "startno"),
+    }[site]
+    rows, seen = [], set()
+    with httpx.Client(timeout=12, follow_redirects=False, trust_env=False) as client:
+        for page in range(1, 4):
+            params = {parameter: keyword, page_parameter: page}
+            if site == "incruit":
+                params["col"] = "job"
+                params[page_parameter] = (page - 1) * 30
+            encoded = urlencode(
+                params,
+                encoding="euc-kr" if site == "incruit" else "utf-8",
+                errors="replace",
+            )
+            client.cookies.clear()
+            with client.stream("GET", base + "?" + encoded) as response:
+                if response.status_code != 200:
+                    break
+                chunks, size = [], 0
+                for chunk in response.iter_bytes():
+                    size += len(chunk)
+                    if size > 3_000_000:
+                        return rows
+                    chunks.append(chunk)
+                html = b"".join(chunks).decode(
+                    "euc-kr" if site == "incruit" else "utf-8", errors="replace"
+                )
+            cards = parse_cards(site, html)
+            fresh = [r for r in cards if canonical_url(r["url"]) not in seen]
+            if not fresh:
+                break
+            for row in fresh:
+                row["retrieval_page"] = page
+                seen.add(canonical_url(row["url"]))
+                rows.append(row)
     groups = [
         re.findall(r"[가-힣A-Za-z0-9]+", part.casefold())
         for part in re.split(r"\s+OR\s+", keyword, flags=re.IGNORECASE)
@@ -176,4 +267,4 @@ def native_search(query, domain):
             for group in groups
         )
 
-    return [row for row in rows if relevant(row)][:60]
+    return [row for row in rows if relevant(row)][:100]

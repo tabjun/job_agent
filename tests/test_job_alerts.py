@@ -47,6 +47,7 @@ RULE = {
     "location": "서울",
     "keywords": "Python, SQL",
     "exclude": "인턴",
+    "require_keywords": True,
 }
 
 
@@ -55,7 +56,15 @@ class JobAlertTests(unittest.TestCase):
         self.folder = tempfile.TemporaryDirectory()
         self.mailer = FakeMailer()
         self.searcher = Mock(return_value=[])
-        self.verifier = Mock(return_value={"status": "open", "evidence": "fixture"})
+        self.confirmed = {
+            "status": "open",
+            "evidence": "fixture",
+            "job_location": "서울",
+            "job_title": "데이터 분석가",
+            "application_available": True,
+            "experience": {"kind": "any"},
+        }
+        self.verifier = Mock(return_value=self.confirmed)
         self.now = datetime(2026, 10, 12, 9, 0)  # Monday
         self.alerts = JobAlerts(
             ProjectPaths(Path(self.folder.name)),
@@ -250,6 +259,7 @@ class JobAlertTests(unittest.TestCase):
 
         def check(url, now):
             return {
+                **self.confirmed,
                 "status": {"1": "closed", "2": "unknown", "3": "open"}.get(
                     url.rsplit("/", 1)[1]
                 ),
@@ -348,6 +358,7 @@ class JobAlertTests(unittest.TestCase):
             }
         ]
         self.verifier.return_value = {
+            **self.confirmed,
             "status": "open",
             "deadline": "2026-10-12T08:59:59+09:00",
         }

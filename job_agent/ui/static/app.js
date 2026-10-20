@@ -121,6 +121,7 @@ function sourceChanged() {
   const web = $("#source").value === "web";
   $("#site-list").hidden = !web;
   $("#search-consent-label").hidden = !web;
+  $("#verified-search-label").hidden = !web;
   $("#postings-label").hidden = web;
   $("#search-form [name=search_consent]").checked = false;
   if (web && !config?.web_search) notice("TAVILY_API_KEY가 설정되어 있지 않습니다. 직접 입력을 사용할 수 있습니다.");
@@ -201,7 +202,7 @@ async function submit(event, task) {
       }
     } else {
       for (const [key, value] of new FormData(form)) if (!["sites", "search_consent"].includes(key)) payload[key] = value;
-      if (task === "search") { payload.sites = [...form.querySelectorAll("[name=sites]:checked")].map(node => node.value); payload.search_consent = form.elements.search_consent.checked; }
+      if (task === "search") { payload.sites = [...form.querySelectorAll("[name=sites]:checked")].map(node => node.value); payload.search_consent = form.elements.search_consent.checked; payload.verify_requirements = form.elements.verify_requirements.checked && payload.source === "web"; }
     }
     renderRun(await api("/api/run", payload));
   } catch (error) { notice(error.message); }
