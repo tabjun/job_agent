@@ -1,4 +1,7 @@
-"""Isolated public subscription routes; resume API stays stateless/manual-only."""
+"""Owner-only server subscription routes, exported only with --with-subscriptions.
+
+The resume API stays stateless/manual-only; these routes use their own keys.
+"""
 
 import hmac
 import json
@@ -39,7 +42,7 @@ def dispatch(backend, payload, token="", ip=""):
             raise ValueError("이메일 인증 정보 전송에 동의해주세요.")
         return backend.code(payload.get("email"), ip)
     if action == "verify":
-        return backend.verify(payload.get("email"), payload.get("code"))
+        return backend.verify(payload.get("email"), payload.get("code"), ip)
     if action == "status":
         return backend.status(token)
     if action == "save":
@@ -66,10 +69,20 @@ class SubscriptionHandler(BaseHTTPRequestHandler):
         self.wfile.write(data)
 
     def do_GET(self):
+        backend = None
         try:
-            ready = CloudConfig.environment().ready()
-        except (ValueError, TypeError):
+            config = CloudConfig.environment()
+            ready = config.ready()
+            if ready:
+                # Environment flags alone do not prove the database, Vault and
+                # Cron are set up; ask the database itself.
+                backend = CloudBackend(config)
+                ready = backend.health().get("ready") is True
+        except Exception:  # noqa: BLE001 - readiness is a yes/no answer only
             ready = False
+        finally:
+            if backend:
+                backend.close()
         self.respond(
             200,
             {
@@ -113,6 +126,8 @@ class SubscriptionHandler(BaseHTTPRequestHandler):
             self.respond(
                 401, {"error": "이메일 인증 또는 유효한 수신 해지 링크가 필요합니다."}
             )
+        except ConnectionError:
+            self.respond(503, {"error": "서버 예약 발송 준비가 끝나지 않았습니다."})
         except (ValueError, TypeError, KeyError):
             self.respond(400, {"error": "구독 조건·인증 코드를 확인하세요."})
         except httpx.HTTPStatusError as exc:
@@ -134,7 +149,7 @@ class SubscriptionHandler(BaseHTTPRequestHandler):
 
 
 class WorkerHandler(SubscriptionHandler):
-    def do_GET(self):
+    def do_POST(self):
         backend = None
         try:
             config = CloudConfig.environment()
@@ -142,7 +157,7 @@ class WorkerHandler(SubscriptionHandler):
                 self.respond(503, {"error": "worker_unconfigured"})
                 return
             if not hmac.compare_digest(
-                self.headers.get("Authorization", ""), "Bearer " + config.secret
+                self.headers.get("Authorization", ""), "Bearer " + config.worker_secret
             ):
                 self.respond(401, {"error": "unauthorized"})
                 return
@@ -154,5 +169,5 @@ class WorkerHandler(SubscriptionHandler):
             if backend:
                 backend.close()
 
-    def do_POST(self):
-        self.respond(405, {"error": "GET required"})
+    def do_GET(self):
+        self.respond(405, {"error": "POST required"})

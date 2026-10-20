@@ -8,7 +8,8 @@
   async function call(payload) {
     const response = await fetch("/api/subscribe", {method:"POST", credentials:"omit", cache:"no-store",
       headers:{"Content-Type":"application/json", ...(token ? {Authorization:`Bearer ${token}`} : {})},body:JSON.stringify(payload)});
-    const result = await response.json(); if (!response.ok) throw new Error(result.error || "서버 연결에 실패했습니다."); return result;
+    let result = {}; try { result = await response.json(); } catch { throw new Error("서버 응답을 읽지 못했습니다. 잠시 후 다시 시도하세요."); }
+    if (!response.ok) throw new Error(result.error || "서버 연결에 실패했습니다."); return result;
   }
   async function action(work) {
     if (busy || !ready) return; busy = true; document.querySelectorAll("button").forEach(b=>{b.disabled=true;}); notice("");
@@ -45,7 +46,7 @@
     const label=node("label");const box=node("input");box.type="checkbox";box.value=key;box.checked=true;
     label.append(box,document.createTextNode(caption));$("#platforms").append(label);
   }
-  $("#code-form").addEventListener("submit",event=>{event.preventDefault();action(async()=>{await call({action:"request_code",email:$("#email").value.trim(),auth_consent:$("#auth-consent").checked});notice("메일로 인증 코드를 보냈습니다. 코드를 입력해주세요.");});});
+  $("#code-form").addEventListener("submit",event=>{event.preventDefault();action(async()=>{await call({action:"request_code",email:$("#email").value.trim(),auth_consent:$("#auth-consent").checked});notice("등록된 주소라면 인증 코드를 보냈습니다. 메일의 코드를 입력해주세요.");});});
   $("#verify-form").addEventListener("submit",event=>{event.preventDefault();action(async()=>{const result=await call({action:"verify",email:$("#email").value.trim(),code:$("#code").value.trim()});token=result.access_token;$("#code").value="";await refresh();notice("이메일 인증 완료. 조건을 저장하면 서버에서 예약 발송합니다.");});});
   $("#subscription-form").addEventListener("submit",event=>{event.preventDefault();action(async()=>{
     const rule={};for(const key of ["role","location","keywords","exclude"])rule[key]=$(`#${key}`).value.trim();

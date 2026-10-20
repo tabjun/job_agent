@@ -27,7 +27,6 @@ RUNTIME = [
     "alerts/__init__.py",
     "alerts/mail.py",
     "alerts/service.py",
-    "alerts/cloud.py",
     "documents/__init__.py",
     "documents/source.py",
     "documents/profile.py",
@@ -42,8 +41,12 @@ RUNTIME = [
     "ui/service.py",
     "hosting/__init__.py",
     "hosting/handler.py",
-    "hosting/alert_handler.py",
 ]
+# The owner-only server subscription is a separate module with its own keys
+# and consent; it is exported only with --with-subscriptions.
+SUBSCRIPTION_RUNTIME = ["alerts/cloud.py", "hosting/alert_handler.py"]
+SUBSCRIPTION_STATIC = ["job-alerts.html", "subscription.css", "subscription.js"]
+SUBSCRIPTION_API = {"subscribe.py": "SubscriptionHandler", "alert-worker.py": "WorkerHandler"}
 
 
 def stamp():
@@ -90,7 +93,7 @@ def private_backup():
     return target
 
 
-def build(output=None, privacy_contact=""):
+def build(output=None, privacy_contact="", with_subscriptions=False):
     output = Path(output or ROOT / "result" / "hosting" / f"vercel-{stamp()}").resolve()
     if output.exists() and any(output.iterdir()):
         raise ValueError(
@@ -114,9 +117,7 @@ def build(output=None, privacy_contact=""):
         "fflate.LICENSE.txt",
         "tutorials.js",
         "alerts.js",
-        "job-alerts.html",
-        "subscription.css",
-        "subscription.js",
+        *(SUBSCRIPTION_STATIC if with_subscriptions else []),
     ]:
         shutil.copy2(static / name, public / name)
     (public / "tutorials").mkdir()
@@ -143,7 +144,7 @@ def build(output=None, privacy_contact=""):
         encoding="utf-8",
     )
     (public / "resume-local-connector.zip").write_bytes(local_kit())
-    for name in RUNTIME:
+    for name in RUNTIME + (SUBSCRIPTION_RUNTIME if with_subscriptions else []):
         source = ROOT / "job_agent" / name
         if source.is_symlink() or not source.resolve().is_relative_to(
             ROOT / "job_agent"
@@ -159,16 +160,20 @@ def build(output=None, privacy_contact=""):
         "class handler(PublicHandler):\n    pass\n",
         encoding="utf-8",
     )
-    for filename, handler_name in [
-        ("subscribe.py", "SubscriptionHandler"),
-        ("alert-worker.py", "WorkerHandler"),
-    ]:
+    for filename, handler_name in (
+        SUBSCRIPTION_API.items() if with_subscriptions else []
+    ):
         (api / filename).write_text(
             f"from job_agent.hosting.alert_handler import {handler_name} as PublicHandler\n\nclass handler(PublicHandler):\n    pass\n",
             encoding="utf-8",
         )
-    for name in ["vercel.json", "requirements.txt", "environment.example"]:
+    for name in ["requirements.txt", "environment.example"]:
         shutil.copy2(ROOT / "deploy" / "vercel" / name, output / name)
+    settings = json.loads((ROOT / "deploy" / "vercel" / "vercel.json").read_text("utf-8"))
+    if not with_subscriptions:
+        for filename in SUBSCRIPTION_API:
+            settings["functions"].pop("api/" + filename, None)
+    (output / "vercel.json").write_text(json.dumps(settings, indent=2), encoding="utf-8")
     (output / ".python-version").write_text("3.12\n", encoding="utf-8")
     (output / ".vercelignore").write_text(
         ".env*\n.venv\n.git\n.vercel\n__pycache__\nresult\nknowledge\nmore_info\n",
@@ -186,6 +191,7 @@ def build(output=None, privacy_contact=""):
             {
                 "format": "job-agent.public-export/v1",
                 "data_policy": "browser_session_memory_and_stateless_request",
+                "server_subscriptions": with_subscriptions,
                 "files": files,
             },
             indent=2,
@@ -202,6 +208,11 @@ def main(argv=None):
     parser.add_argument("--output")
     parser.add_argument("--privacy-contact", default="")
     parser.add_argument(
+        "--with-subscriptions",
+        action="store_true",
+        help="Include the owner-only server email subscription (off by default)",
+    )
+    parser.add_argument(
         "--backup",
         action="store_true",
         help="Also create a private local environment snapshot",
@@ -209,7 +220,10 @@ def main(argv=None):
     args = parser.parse_args(argv)
     if args.backup:
         print(f"PRIVATE backup (never upload): {private_backup()}")
-    print(f"Public code-only export: {build(args.output, args.privacy_contact)}")
+    print(
+        "Public code-only export: "
+        f"{build(args.output, args.privacy_contact, args.with_subscriptions)}"
+    )
 
 
 if __name__ == "__main__":

@@ -2,3 +2,10 @@
 # Optional public contact is supplied at export time, not a runtime secret.
 # python -m job_agent.hosting.build --privacy-contact contact@example.com
 # Keep OPENAI_API_KEY / GOOGLE_API_KEY / TAVILY_API_KEY unset on Vercel.
+# Only for an export built with --with-subscriptions (owner-only, docs/server_alerts.md);
+# enter values in the Vercel dashboard, never in files:
+# ALERT_SUPABASE_URL ALERT_SUPABASE_ANON_KEY ALERT_SUPABASE_SERVICE_KEY
+# ALERT_WORKER_SECRET ALERT_UNSUBSCRIBE_SECRET ALERT_RATE_PEPPER ALERT_ALLOWED_EMAILS
+# ALERT_SERVER_SEARCH_KEY ALERT_PUBLIC_ORIGIN ALERT_SERVER_FROM
+# ALERT_RESEND_KEY or ALERT_SERVER_SMTP_HOST/_USER/_PASSWORD/_PORT
+# ALERT_SERVICE_ENABLED ALERT_SCHEDULER_READY

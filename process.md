@@ -8,6 +8,9 @@
 
 ## 공고 알림 메일 (2026-10-12)
 
+- (2026-10-20 추가) 알림 품질 점검은 저장 알림으로 `collect`만 실행(메일 없음, alerts.json 해시 비교)하고 `result/job_alerts/runs/<알림ID>.json`의 후보별 결과(선정·마감·보류 사유·상세 미확인)로 누락 원인을 본다. 무료 재대조는 원문 검색만 쓰는 searcher로 상한을 풀어 독립 표본과 비교한다. 증빙은 ignored `result/search_quality/`에만 둔다.
+- (2026-10-20 추가) 서버 구독은 본인 전용 선택 모듈이다. 공개 export는 기본 제외, `build --with-subscriptions`로만 포함. Supabase·Vercel 원격 설정은 `docs/server_alerts.md` 할 일 목록을 사용자 승인 후 진행하고, 이메일·키는 환경변수·Vault에만 둔다.
+
 - 로컬 소유자 전용(`/api/alerts`는 local_owner + X-Admin-Token). 공유·공개 체험·Vercel에 열지 않는다. 운영자 Tavily 키와 SMTP 계정을 쓰기 때문이다.
 - 이메일은 코드 인증 후에만 수신 대상으로 쓴다. 코드는 해시만 저장, 10분/5회/1분 재요청/시간당 5회 제한.
 - 발송 판단은 결정론적 키워드/제외어/도메인 필터이며 LLM 없음. 메일에 원문 확인·적합도 아님 안내를 유지한다. 발송 실패 시 URL을 보낸 것으로 기록하지 않는다.

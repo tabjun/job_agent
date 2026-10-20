@@ -13,7 +13,7 @@ original environment, documents, results, or logged-in browser profiles.
 | Deterministic execution | Stateless request using the same Python workflows | Existing `WorkspaceService` |
 | Personal model/search keys | Never exported, never callable | Existing optional owner settings |
 | Portal login / MFA / saving | Own-PC connector, explicit review | Dedicated local browser |
-| Supabase | Not connected; no database needed | Not required |
+| Supabase | Not connected in the default export; only the owner-only server subscription (`--with-subscriptions`, `docs/server_alerts.md`) uses it with separate keys | Not required |
 
 Standard JSON upload/download, source review, manual-posting filtering,
 verbatim resume reordering, and reviewed company-form conversion are available.

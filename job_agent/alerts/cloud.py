@@ -1,7 +1,9 @@
 """Server subscription module: Supabase Auth/RLS, durable outbox, server sender.
 
 Separate credentials and explicit enablement; never reads .env or local alert
-files. Resume/profile data is not accepted by this interface.
+files. Resume/profile data is not accepted by this interface. It is run for the
+owner only: ``ALERT_ALLOWED_EMAILS`` lists the addresses that may sign in, and
+each secret has a single purpose so one leak does not unlock the others.
 """
 
 import hashlib
@@ -25,15 +27,30 @@ from job_agent.core.job_status import KST, confirmation_current
 from job_agent.core.native_jobs import native_search
 
 
+def allowed_emails(value):
+    """'a@x.kr, b@y.kr' -> normalized set; invalid entries are dropped."""
+    found = set()
+    for item in str(value or "").split(","):
+        try:
+            found.add(normalize_email(item))
+        except ValueError:
+            continue
+    return frozenset(found)
+
+
 @dataclass(frozen=True)
 class CloudConfig:
     database_url: str
     anon_key: str
     service_key: str
-    secret: str
+    worker_secret: str
+    unsubscribe_secret: str
+    rate_pepper: str
     search_key: str
     origin: str
     sender: str
+    allowed: frozenset = frozenset()
+    unsubscribe_previous: str = ""
     resend_key: str = ""
     smtp_host: str = ""
     smtp_user: str = ""
@@ -45,19 +62,23 @@ class CloudConfig:
     def environment(cls):
         # No fallback to any of the owner's local SMTP/Tavily variables.
         return cls(
-            os.getenv("ALERT_SUPABASE_URL", "").rstrip("/"),
-            os.getenv("ALERT_SUPABASE_ANON_KEY", ""),
-            os.getenv("ALERT_SUPABASE_SERVICE_KEY", ""),
-            os.getenv("ALERT_SERVER_SECRET", ""),
-            os.getenv("ALERT_SERVER_SEARCH_KEY", ""),
-            os.getenv("ALERT_PUBLIC_ORIGIN", "").rstrip("/"),
-            os.getenv("ALERT_SERVER_FROM", ""),
-            os.getenv("ALERT_RESEND_KEY", ""),
-            os.getenv("ALERT_SERVER_SMTP_HOST", ""),
-            os.getenv("ALERT_SERVER_SMTP_USER", ""),
-            os.getenv("ALERT_SERVER_SMTP_PASSWORD", ""),
-            int(os.getenv("ALERT_SERVER_SMTP_PORT", "587")),
-            os.getenv("ALERT_SERVICE_ENABLED") == "true"
+            database_url=os.getenv("ALERT_SUPABASE_URL", "").rstrip("/"),
+            anon_key=os.getenv("ALERT_SUPABASE_ANON_KEY", ""),
+            service_key=os.getenv("ALERT_SUPABASE_SERVICE_KEY", ""),
+            worker_secret=os.getenv("ALERT_WORKER_SECRET", ""),
+            unsubscribe_secret=os.getenv("ALERT_UNSUBSCRIBE_SECRET", ""),
+            rate_pepper=os.getenv("ALERT_RATE_PEPPER", ""),
+            search_key=os.getenv("ALERT_SERVER_SEARCH_KEY", ""),
+            origin=os.getenv("ALERT_PUBLIC_ORIGIN", "").rstrip("/"),
+            sender=os.getenv("ALERT_SERVER_FROM", ""),
+            allowed=allowed_emails(os.getenv("ALERT_ALLOWED_EMAILS", "")),
+            unsubscribe_previous=os.getenv("ALERT_UNSUBSCRIBE_SECRET_PREVIOUS", ""),
+            resend_key=os.getenv("ALERT_RESEND_KEY", ""),
+            smtp_host=os.getenv("ALERT_SERVER_SMTP_HOST", ""),
+            smtp_user=os.getenv("ALERT_SERVER_SMTP_USER", ""),
+            smtp_password=os.getenv("ALERT_SERVER_SMTP_PASSWORD", ""),
+            smtp_port=int(os.getenv("ALERT_SERVER_SMTP_PORT", "587")),
+            enabled=os.getenv("ALERT_SERVICE_ENABLED") == "true"
             and os.getenv("ALERT_SCHEDULER_READY") == "true",
         )
 
@@ -77,16 +98,23 @@ class CloudConfig:
             and self.smtp_password
             and self.smtp_port in {465, 587}
         )
+        secrets = [self.worker_secret, self.unsubscribe_secret, self.rate_pepper]
         return bool(
             self.enabled
             and https
             and self.anon_key
             and self.service_key
-            and len(self.secret) >= 32
+            # One purpose per secret: worker call, unsubscribe link, rate keys.
+            and all(len(value) >= 32 for value in secrets)
+            and len(set(secrets)) == len(secrets)
+            and self.allowed
             and self.search_key
             and self.sender
             and mail
         )
+
+
+CONSENT_VERSION = "job-alerts/v2"
 
 
 def valid_id(value):
@@ -127,26 +155,58 @@ class CloudBackend:
             admin=token is None,
         )
 
-    def code(self, email, ip):
-        email = normalize_email(email)
-        digest = lambda value: hmac.new(
-            self.config.secret.encode(), value.encode(), hashlib.sha256
+    def digest(self, value):
+        return hmac.new(
+            self.config.rate_pepper.encode(), value.encode(), hashlib.sha256
         ).hexdigest()
-        keys = [
-            "global",
-            "minute:" + digest(email),
-            "recipient:" + digest(email),
-            "ip:" + digest(str(ip)),
-        ]
+
+    def reserve(self, keys):
         if not self.rpc("alert_reserve_code", {"p_keys": keys}):
             raise ValueError("인증 요청이 많습니다. 잠시 후 다시 시도하세요.")
-        self.request("POST", "/auth/v1/otp", data={"email": email, "create_user": True})
+
+    def allowed(self, email):
+        return normalize_email(email) in self.config.allowed
+
+    def health(self):
+        """The database's own view of migration, scheduler and Vault setup."""
+        result = self.rpc("alert_health")
+        return result if isinstance(result, dict) else {"ready": False}
+
+    def code(self, email, ip):
+        email = normalize_email(email)
+        if not self.allowed(email):
+            # Same answer as success: the page must not reveal the allowlist.
+            return {"requested": True}
+        self.reserve(
+            [
+                "global",
+                "minute:" + self.digest(email),
+                "recipient:" + self.digest(email),
+                "ip:" + self.digest(str(ip)),
+            ]
+        )
+        # Users are created by the owner in the Supabase dashboard; signups
+        # stay off, so a leaked publishable key cannot add accounts here.
+        self.request(
+            "POST", "/auth/v1/otp", data={"email": email, "create_user": False}
+        )
         return {"requested": True}
 
-    def verify(self, email, code):
+    def verify(self, email, code, ip=""):
         email = normalize_email(email)
         if not isinstance(code, str) or not re.fullmatch(r"\d{6,8}", code):
             raise ValueError("메일의 인증 코드를 입력하세요.")
+        if not self.allowed(email):
+            raise PermissionError("이메일 인증이 필요합니다.")
+        # Supabase limits /verify per caller IP, and every visitor shares this
+        # server's IP: count attempts per address and per visitor here.
+        self.reserve(
+            [
+                "verifyglobal",
+                "verify:" + self.digest(email),
+                "verifyip:" + self.digest(str(ip)),
+            ]
+        )
         result = self.request(
             "POST",
             "/auth/v1/verify",
@@ -164,7 +224,9 @@ class CloudBackend:
         if not isinstance(token, str) or not 20 <= len(token) <= 8000:
             raise PermissionError("이메일 인증이 필요합니다.")
         user = self.request("GET", "/auth/v1/user", token=token)
-        if not user.get("email_confirmed_at"):
+        if not user.get("email_confirmed_at") or not self.allowed(
+            user.get("email")
+        ):
             raise PermissionError("이메일 인증이 필요합니다.")
         return {
             "id": valid_id(user.get("id")),
@@ -187,6 +249,8 @@ class CloudBackend:
 
     def save(self, token, payload):
         self.user(token)
+        if self.health().get("ready") is not True:
+            raise ConnectionError("scheduler_not_ready")
         if (
             payload.get("search_consent") is not True
             or payload.get("storage_consent") is not True
@@ -205,6 +269,7 @@ class CloudBackend:
                 "p_schedule": schedule,
                 "p_limit": limit,
                 "p_enabled": payload.get("enabled", True) is True,
+                "p_consent_version": CONSENT_VERSION,
             },
             token,
         )
@@ -220,18 +285,28 @@ class CloudBackend:
         self.request("DELETE", "/auth/v1/admin/users/" + user["id"], admin=True)
         return {"deleted": True}
 
-    def unsubscribe_token(self, subscription_id):
+    def unsubscribe_token(self, subscription_id, secret=None):
         identity = valid_id(subscription_id)
         signature = hmac.new(
-            self.config.secret.encode(),
-            ("unsubscribe:" + identity).encode(),
+            (secret or self.config.unsubscribe_secret).encode(),
+            ("unsubscribe:v1:" + identity).encode(),
             hashlib.sha256,
         ).hexdigest()
-        return identity + "." + signature
+        return "v1." + identity + "." + signature
 
     def unsubscribe(self, token):
-        identity, _, _ = str(token).partition(".")
-        if not hmac.compare_digest(self.unsubscribe_token(identity), str(token)):
+        version, _, rest = str(token).partition(".")
+        identity, _, _ = rest.partition(".")
+        try:
+            identity = valid_id(identity)
+        except ValueError as exc:
+            raise PermissionError("수신 해지 링크가 올바르지 않습니다.") from exc
+        # A rotated key keeps already-mailed links valid until it is removed.
+        keys = [k for k in (self.config.unsubscribe_secret, self.config.unsubscribe_previous) if k]
+        if version != "v1" or not any(
+            hmac.compare_digest(self.unsubscribe_token(identity, key), str(token))
+            for key in keys
+        ):
             raise PermissionError("수신 해지 링크가 올바르지 않습니다.")
         self.rpc("alert_unsubscribe", {"p_id": identity})
         return {"unsubscribed": True}
@@ -325,7 +400,7 @@ class ServerWorker:
             if native:
                 return native[:80]
             raise
-        return native[:60] + rows[:20]
+        return native[:100] + rows[:20]
 
     def run_one(self):
         claim = self.backend.rpc("alert_claim")
@@ -334,14 +409,27 @@ class ServerWorker:
         delivery, subscription = claim["delivery"], claim["subscription"]
         identity = valid_id(delivery["id"])
         payload = delivery.get("payload")
+        # A delivery claimed while 'sending' may already have reached the
+        # provider: resend the stored payload under the same idempotency key.
+        resume = delivery.get("state") == "sending" and bool(payload)
+        handed_over = False
         try:
             if not payload:
-                JobAlerts._conditions(subscription)  # validate DB/direct-RPC input too
+                # Use only validated conditions, even if a row was written by
+                # a direct RPC call rather than this API.
+                platforms, schedule, limit = JobAlerts._conditions(subscription)
                 stats = {}
                 jobs, errors = JobAlerts(
                     searcher=self.searcher, verifier=self.verifier, clock=self.clock
                 ).collect(
-                    {**subscription, "sent_urls": claim.get("sent_urls", [])}, stats
+                    {
+                        **subscription,
+                        "platforms": platforms,
+                        "schedule": schedule,
+                        "max_results": limit,
+                        "sent_urls": claim.get("sent_urls", []),
+                    },
+                    stats,
                 )
                 if not jobs:
                     if not errors:
@@ -416,8 +504,9 @@ class ServerWorker:
                 ):
                     return {"processed": 1, "state": "cancelled"}
             # Recheck the persisted payload on retries; never regenerate content
-            # under the same provider idempotency key.
-            if any(
+            # under the same provider idempotency key. A resumed send is not
+            # rechecked: cancelling it could hide a mail that was delivered.
+            if not resume and any(
                 not confirmation_current(j.get("status_check", {}), self.clock())
                 for j in payload.get("jobs", [])
             ):
@@ -431,8 +520,11 @@ class ServerWorker:
                     },
                 )
                 return {"processed": 1, "state": "cancelled"}
-            if not self.backend.rpc("alert_can_send", {"p_id": identity}):
+            if not resume and not self.backend.rpc(
+                "alert_can_send", {"p_id": identity}
+            ):
                 return {"processed": 1, "state": "cancelled"}
+            handed_over = True
             provider_id = self.mailer.send(payload, identity)
             self.backend.rpc(
                 "alert_finish",
@@ -445,7 +537,11 @@ class ServerWorker:
             )
             return {"processed": 1, "state": "sent"}
         except Exception:  # noqa: BLE001 - store redacted outcome; never recipient/content/credentials
-            state = "retry" if self.config.resend_key else "unknown"
+            # Before the hand-over nothing left the server, so retry. After it,
+            # SMTP cannot tell whether the mail went out; Resend dedupes by key.
+            state = (
+                "retry" if self.config.resend_key or not handed_over else "unknown"
+            )
             self.backend.rpc(
                 "alert_finish",
                 {
