@@ -292,3 +292,9 @@
 - 새 test_search_quality12, test_native_jobs5, test_job_hunter_search1, 알림회귀2 추가. 전체154 tests 실패없음/4skip 및 추가 Agent1 테스트1 통과. 최종 원문5/검색12/알림14/메일8 재실행 통과, 브라우저8 실패없음/2skip. 기록 재생 UI 1440/390px 회사/출처/JS·넘침 확인 통과. 새 모듈/테스트 scoped Ruff, diff --check 통과(기존 다른 함수의 lint는 별도).
 - docs/search_quality.md에 실측·한계·원문기준 품질 측정 절차, 감사 CLI --live/--replay 기록. API 예산을 제한한 실제 공고 조회만 수행했고 메일/LLM/포털 계정 변경 없음. 코드 전용 export를 준비하며 커밋·푸시 후 기존 Vercel 배포·고정주소 확인을 이어서 수행.
 - 배포 완료: 기능 커밋 ee3c9c9 푸시 직후 result/hosting/search-quality-final-20261015/ allowlist 56파일 dry-run(.env.local/.vercel 제외) 검수, Vercel READY dpl_9eWnXwFTBNJs6QfVaqBgWwM5WBjp. 고정 HTTPS의 HTML/CSS/app.js/alerts.js/PC연결ZIP 해시 일치, ZIP native_jobs 포함/비밀경로 제외 확인. 실제 API 기업명·영어경계·공개web검색400 차단 및 1440/390px 공개 UI 회사명·비교링크5개·JS/넘침 확인 통과. 문서에 실제 배포 결과 기록 후 추가 푸시.
+
+## 2026-10-20: 경력 포트폴리오 v4 개편과 공개 기록 정리 (Claude)
+
+- 사용자 피드백으로 경력 포트폴리오를 흰 바탕·남색 한 색·키워드 제목 레이아웃(v4, 22장)으로 다시 만들고, 제출 문서의 프로젝트를 간접명으로만 쓰도록 바꿨다. 작업은 비공개 resum_summary(`6c6db7a`)와 로컬 취업 폴더에서 했고 job_agent 코드는 바꾸지 않았다.
+- 사용자 요청으로 conversation_l2_cache.md의 식별 정보(회사 내부 코드명·계정·메일 주소)를 지우고, 해당 문구가 들어간 최신 커밋을 다시 만들어 job_agent에 강제 push했다(`3be9ee0` → `f235f05`, develop·main 영향 없음). AGENTS.md에 공개 문서 표기 규칙을 추가했다.
+- 검증: 결과물(PPTX·PDF·HTML·JSON·MD·Word) 코드명 자동 검사 0건, 쪽수(이력서 3·경력기술서 10·포트폴리오 22·합본 32) 확인, PDF 렌더링 육안 확인. job_agent는 문서만 바뀌어 테스트와 재배포는 하지 않았다.
