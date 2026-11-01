@@ -1,6 +1,6 @@
 "use strict";
 (() => {
-  const names = {catch: "캐치", jobkorea: "잡코리아", saramin: "사람인", wanted: "원티드", incruit: "인크루트"};
+  const names = {catch: "캐치", jobkorea: "잡코리아", saramin: "사람인", wanted: "원티드", incruit: "인크루트", linkedin: "링크드인"};
   let queue = [], selectedProfile = null;
   const row = site => $("#portal-queue").querySelector(`[data-site="${site}"]`);
   function update(site, text) { const node = row(site); if (node) node.querySelector("p").textContent = text; }

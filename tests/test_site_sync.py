@@ -7,7 +7,14 @@ import tempfile
 import threading
 import unittest
 
-from job_agent.browser.sync import ResumeSync, SyncWorker, resume_editor, control_value
+from job_agent.browser.sync import (
+    ResumeSync,
+    SyncWorker,
+    control_value,
+    resume_editor,
+    save_dialog,
+    site_text,
+)
 from job_agent.core.paths import ProjectPaths
 from job_agent.documents.profile import FORMAT
 
@@ -34,6 +41,19 @@ class FixtureHandler(BaseHTTPRequestHandler):
             self.server.submissions += 1
         self.send_response(200)
         self.end_headers()
+
+
+class ConfirmHandler(FixtureHandler):
+    """A portal whose save button asks for confirmation before saving."""
+
+    def do_GET(self):
+        prompt = json.dumps(self.server.prompt, ensure_ascii=False)
+        content = f"""<label for="summary">소개</label><textarea id="summary">{html.escape(self.server.value)}</textarea>
+        <button id="save" onclick='if (confirm({prompt})) fetch("/save",{{method:"POST",body:document.querySelector("#summary").value}})'>저장</button>""".encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.end_headers()
+        self.wfile.write(content)
 
 
 class FixtureRegistry:
@@ -398,6 +418,75 @@ class SyncTests(unittest.IsolatedAsyncioTestCase):
                 thread.join()
 
 
+class SaveDialogTests(unittest.IsolatedAsyncioTestCase):
+    """Accept a save confirmation only during the reviewed save click."""
+
+    async def save_with_prompt(self, prompt, site="catch", value="확인된 사실"):
+        with tempfile.TemporaryDirectory() as folder:
+            server = ThreadingHTTPServer(("127.0.0.1", 0), ConfirmHandler)
+            server.value, server.submissions, server.prompt = "old", 0, prompt
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            url = f"http://127.0.0.1:{server.server_port}/"
+            profile = {
+                "format": FORMAT,
+                "fields": [
+                    {
+                        "id": "summary",
+                        "label": "소개",
+                        "value": value,
+                        "reviewed": True,
+                        "evidence": [
+                            {"source_id": "fixture", "paragraph_index": 0, "text": value}
+                        ],
+                    }
+                ],
+            }
+            engine = ResumeSync(
+                ProjectPaths(Path(folder)),
+                lambda: profile,
+                registry=FixtureRegistry(url),
+                headed=False,
+                editor_check=lambda site, url: True,
+            )
+            try:
+                await engine.open({"site": site})
+                preview = await engine.capture({"site": site})
+                result = await engine.apply(
+                    {
+                        "site": site,
+                        "nonce": preview["nonce"],
+                        "consent": True,
+                        "mappings": [{"field_id": "summary", "target_index": 0}],
+                        "save_index": 0,
+                    }
+                )
+                self.assertFalse(engine.saving)
+                return result, server.value
+            finally:
+                await engine.close()
+                server.shutdown()
+                server.server_close()
+                thread.join()
+
+    async def test_save_confirmation_is_accepted(self):
+        result, saved = await self.save_with_prompt("이력서를 저장하시겠습니까?")
+        self.assertEqual(result["status"], "saved_verified")
+        self.assertEqual(saved, "확인된 사실")
+
+    async def test_risky_confirmation_is_dismissed(self):
+        result, saved = await self.save_with_prompt("저장 후 바로 지원하시겠습니까?")
+        self.assertEqual(result["status"], "save_unverified")
+        self.assertEqual(saved, "old")
+
+    async def test_incruit_value_is_stored_without_broken_marks(self):
+        result, saved = await self.save_with_prompt(
+            "저장하시겠습니까?", site="incruit", value="문제 정의—검증 • 적용"
+        )
+        self.assertEqual(result["status"], "saved_verified")
+        self.assertEqual(saved, "문제 정의-검증 · 적용")
+
+
 class AutoSyncTests(unittest.IsolatedAsyncioTestCase):
     """After the person logs in, mapping, input, save and readback run alone."""
 
@@ -511,14 +600,28 @@ class WorkerTests(unittest.TestCase):
         self.assertTrue(
             resume_editor("jobkorea", "https://www.jobkorea.co.kr/User/Resume/Edit")
         )
+        for path in ["/in/fixture/edit/intro/", "/in/fixture/edit/forms/summary/new/"]:
+            self.assertTrue(resume_editor("linkedin", "https://www.linkedin.com" + path))
         for site, path in [
             ("wanted", "/cv/list"),
             ("catch", "/Member/ResumeList"),
             ("saramin", "/zf_user/resume/resume-manage"),
             ("wanted", "/jobs/apply"),
             ("incruit", "/login"),
+            ("linkedin", "/feed/"),
+            ("linkedin", "/in/fixture/"),
+            ("linkedin", "/jobs/view/1/"),
         ]:
             self.assertFalse(resume_editor(site, "https://example.test" + path))
+
+    def test_incruit_text_and_dialog_rules(self):
+        self.assertEqual(site_text("incruit", "A—B–C • D"), "A-B-C · D")
+        self.assertEqual(site_text("wanted", "A—B"), "A—B")
+        with self.assertRaisesRegex(ValueError, "인크루트"):
+            site_text("incruit", "분석 🚀")
+        self.assertTrue(save_dialog("이력서를 저장하시겠습니까?"))
+        for message in ["삭제 후 저장할까요?", "저장 후 지원하시겠습니까?", "공개로 저장할까요?", "계속할까요?"]:
+            self.assertFalse(save_dialog(message))
 
     def test_worker_one_loop_and_cleanup(self):
         class Engine:

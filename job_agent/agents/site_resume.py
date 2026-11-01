@@ -153,7 +153,7 @@ async def run_site_resume_agent():
     print("\n" + "=" * 60)
     print(" 🧾 채용 사이트별 이력서 입력 패키지 에이전트")
     print("=" * 60)
-    print("우선 대상: catch, jobkorea, saramin, wanted, incruit")
+    print("우선 대상: catch, jobkorea, saramin, wanted, incruit, linkedin")
 
     site_name = input("1. 저장할 채용 사이트: ").strip()
     company_name = input("2. 지원 기업명: ").strip()

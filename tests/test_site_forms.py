@@ -22,8 +22,10 @@ class MappingTests(unittest.TestCase):
 
     def test_targets_and_domain_boundaries(self):
         self.assertEqual(
-            default_sites(), ["catch", "jobkorea", "saramin", "wanted", "incruit"]
+            default_sites(),
+            ["catch", "jobkorea", "saramin", "wanted", "incruit", "linkedin"],
         )
+        self.assertTrue(site_matches_url("linkedin", "https://www.linkedin.com/in/me/edit/intro/"))
         self.assertTrue(
             site_matches_url("incruit", "https://people.incruit.com/resume")
         )

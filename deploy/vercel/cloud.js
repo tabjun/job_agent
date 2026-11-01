@@ -51,6 +51,7 @@
       token: "", local_owner: false, public_demo: true, data_retention: "browser_memory",
       allowed_providers: ["none"], providers: {}, models: {}, web_search: false,
       sites: ["catch", "jobkorea", "saramin", "wanted", "incruit"],
+      resume_sites: ["catch", "jobkorea", "saramin", "wanted", "incruit", "linkedin"],
       privacy_contact: options.privacy_contact || "", handoff_origin: "",
       local_kit_url: "/resume-local-connector.zip", cloud_hosted: true,
     };

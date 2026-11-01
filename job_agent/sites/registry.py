@@ -49,7 +49,7 @@ SITE_TARGETS = {
         "name": "LinkedIn",
         "aliases": ["linkedin", "링크드인"],
         "candidate_urls": [
-            "https://www.linkedin.com/in/",
+            "https://www.linkedin.com/in/me/edit/intro/",
             "https://www.linkedin.com/feed/",
             "https://www.linkedin.com/profile/edit/forms/position/new/",
         ],
@@ -58,7 +58,7 @@ SITE_TARGETS = {
 
 
 def default_sites():
-    return ["catch", "jobkorea", "saramin", "wanted", "incruit"]
+    return ["catch", "jobkorea", "saramin", "wanted", "incruit", "linkedin"]
 
 
 def normalize_site(site):

@@ -72,9 +72,9 @@
     }
     if (!config?.local_owner || !config.handoff_origin || !window.opener || event.source !== window.opener || event.origin !== config.handoff_origin || data.type !== "resume-workspace.offer") return;
     try {
-      if (!/^[0-9a-f-]{36}$/.test(data.request_id) || !config.sites.includes(data.site) || data.profile?.format !== "job-agent.resume/v1" || !Array.isArray(data.profile.fields) || JSON.stringify(data.profile).length > 2_000_000) return;
+      if (!/^[0-9a-f-]{36}$/.test(data.request_id) || !config.resume_sites.includes(data.site) || data.profile?.format !== "job-agent.resume/v1" || !Array.isArray(data.profile.fields) || JSON.stringify(data.profile).length > 2_000_000) return;
       const sites = data.sites === undefined ? [data.site] : data.sites;
-      if (!Array.isArray(sites) || !sites.length || sites.length > 5 || new Set(sites).size !== sites.length || !sites.every(site => config.sites.includes(site)) || data.site !== sites[0]) return;
+      if (!Array.isArray(sites) || !sites.length || sites.length > config.resume_sites.length || new Set(sites).size !== sites.length || !sites.every(site => config.resume_sites.includes(site)) || data.site !== sites[0]) return;
       pending = structuredClone({...data, sites});
       $("#handoff-origin").textContent = `요청한 웹사이트: ${event.origin}`;
       $("#handoff-preview").textContent = `선택한 플랫폼: ${sites.join(", ")}\n\n` + data.profile.fields.map(row => `${row.label}: ${String(row.value || "").slice(0, 500)}`).join("\n\n");

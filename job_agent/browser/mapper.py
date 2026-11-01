@@ -446,7 +446,7 @@ async def main(argv=None) -> None:
         "--sites",
         nargs="+",
         default=default_sites(),
-        help="catch jobkorea saramin wanted incruit",
+        help="catch jobkorea saramin wanted incruit linkedin",
     )
     parser.add_argument("--mode", choices=["static", "playwright"], default="static")
     parser.add_argument(

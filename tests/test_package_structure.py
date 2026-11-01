@@ -152,7 +152,7 @@ class PackageTests(unittest.TestCase):
                 str(root / "output"),
             )
             files = list((root / "output").glob("*_package.json"))
-            self.assertEqual(len(files), 5)
+            self.assertEqual(len(files), 6)
             package = json.loads(files[0].read_text())
             self.assertEqual(
                 package["package"]["field_values"]["summary"], "Reviewed fact"

@@ -332,7 +332,7 @@ class HostingHttpTests(unittest.TestCase):
                 page.locator("#search-form button[type=submit]").click()
                 expect(page.locator("#jobs article")).to_have_count(2)
                 page.locator('.nav[data-view="prepare"]').click()
-                expect(page.locator("#portal-sites input")).to_have_count(5)
+                expect(page.locator("#portal-sites input")).to_have_count(6)
                 expect(page.locator("#company-advanced form")).to_be_hidden()
                 expect(page.locator("#sync-panel")).to_be_hidden()
                 page.locator("#profile-panel").evaluate(

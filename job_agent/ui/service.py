@@ -34,7 +34,7 @@ from job_agent.documents.profile import ResumeProfile
 from job_agent.documents.sections import render_items
 from job_agent.documents.source import DocxReader
 from job_agent.sites.application import ApplicationAdapter
-from job_agent.sites.registry import SiteRegistry
+from job_agent.sites.registry import SiteRegistry, default_sites
 from job_agent.ui.models import CustomModel
 
 
@@ -207,6 +207,7 @@ class WorkspaceService:
             },
             "web_search": bool(os.getenv("TAVILY_API_KEY")),
             "sites": list(SITES),
+            "resume_sites": default_sites(),
         }
 
     @staticmethod

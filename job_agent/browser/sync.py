@@ -3,6 +3,7 @@
 import asyncio
 import hashlib
 import json
+import re
 import secrets
 import threading
 from uuid import uuid4
@@ -25,11 +26,49 @@ SAVE_LABELS = {
     "이력서 저장",
     "이 부분만 저장",
     "모두 저장",
+    "Save",
 }
+
+SITE_NAMES = {
+    "catch": "캐치",
+    "jobkorea": "잡코리아",
+    "saramin": "사람인",
+    "wanted": "원티드",
+    "incruit": "인크루트",
+    "linkedin": "링크드인",
+}
+
+# Incruit stores EUC-KR; these marks otherwise come back as '?'.
+EUC_KR_REPLACEMENTS = {"—": "-", "–": "-", "•": "·"}
+
+RISKY_DIALOG_WORDS = ("삭제", "탈퇴", "제출", "지원", "공개", "동의", "결제", "구매")
+
+
+def site_text(site, value):
+    """Convert a reviewed value into what the site can store unchanged."""
+    if site != "incruit":
+        return value
+    for mark, replacement in EUC_KR_REPLACEMENTS.items():
+        value = value.replace(mark, replacement)
+    try:
+        value.encode("cp949")
+    except UnicodeEncodeError as error:
+        raise ValueError(
+            f"인크루트에 저장할 수 없는 문자가 있습니다: {value[error.start]!r}"
+        ) from None
+    return value
+
+
+def save_dialog(message):
+    """Only a plain save confirmation may be accepted, never deletion or submission."""
+    return "저장" in message and not any(word in message for word in RISKY_DIALOG_WORDS)
 
 
 def resume_editor(site, url):
     path = urlsplit(url).path.lower()
+    if site == "linkedin":
+        # Profile edit forms open as routes over the profile page.
+        return bool(re.match(r"^/in/[^/]+/edit/(intro|forms/[a-z-]+)", path))
     if any(
         token in path
         for token in ["login", "signin", "apply", "manage", "list", "resumemng"]
@@ -96,6 +135,7 @@ class ResumeSync:
         self.headed = headed
         self.editor_check = editor_check or resume_editor
         self.contexts, self.sessions, self.previews = {}, {}, {}
+        self.saving = set()
         self.playwright = None
         self.store = ArtifactStore(paths.results / "site_sync")
 
@@ -122,12 +162,10 @@ class ResumeSync:
             self.contexts[site] = await session.__aenter__()
             self.sessions[site] = session
             context = self.contexts[site]
-            # Unknown website dialogs are never accepted automatically.
-            context.on(
-                "page", lambda page: page.on("dialog", lambda dialog: dialog.dismiss())
-            )
+            handler = self._dialog_handler(site)
+            context.on("page", lambda page: page.on("dialog", handler))
             page = context.pages[0] if context.pages else await context.new_page()
-            page.on("dialog", lambda dialog: dialog.dismiss())
+            page.on("dialog", handler)
             editor_url = self.registry.target(site)["candidate_urls"][0]
             saved_path = self.store.directory / f"{site}-bindings.json"
             if saved_path.exists():
@@ -153,6 +191,25 @@ class ResumeSync:
             "status": "login_and_open_editor",
             "message": "전용 브라우저에서 로그인하고 기존 이력서 편집 화면을 여세요.",
         }
+
+    def _dialog_handler(self, site):
+        """Dismiss website dialogs, except a save confirmation for the reviewed save click.
+
+        Several portals ask "저장하시겠습니까?" after the save button; dismissing it
+        cancels the save. Deletion, submission, publishing or consent prompts are
+        never accepted.
+        """
+
+        async def handle(dialog):
+            try:
+                if site in self.saving and save_dialog(dialog.message):
+                    await dialog.accept()
+                else:
+                    await dialog.dismiss()
+            except Exception:
+                pass  # Another listener already answered this dialog.
+
+        return handle
 
     def _page(self, site):
         context = self.contexts.get(site)
@@ -340,7 +397,9 @@ class ResumeSync:
             actions.append(
                 {
                     "path": key,
-                    "value": control_value(preview["fields"][index], values[key]),
+                    "value": control_value(
+                        preview["fields"][index], site_text(site, values[key])
+                    ),
                     "target": preview["fields"][index],
                 }
             )
@@ -397,8 +456,14 @@ class ResumeSync:
                     page
                 ):
                     raise ValueError("저장 화면이 변경되었습니다.")
-                await page.locator(button["selector"]).click(timeout=10000)
-            await asyncio.sleep(2)
+                self.saving.add(site)
+                try:
+                    await page.locator(button["selector"]).click(timeout=10000)
+                    await asyncio.sleep(2)
+                finally:
+                    self.saving.discard(site)
+            else:
+                await asyncio.sleep(2)
             if not allowed(page.url):
                 raise ValueError("저장 후 허용 사이트를 벗어났습니다.")
             await page.goto(
@@ -467,8 +532,8 @@ class ResumeSync:
     def _write_report(self, site, entry):
         """Latest result per site plus one Markdown summary for later review."""
         self.store.write_json(f"auto-{site}.json", entry)
-        names = {"catch": "캐치", "jobkorea": "잡코리아", "saramin": "사람인", "wanted": "원티드", "incruit": "인크루트"}
-        lines = ["# 플랫폼 이력서 자동 저장 결과", "", "사이트별 최신 실행입니다. 저장 후 다시 읽어 확인한 항목만 '확인됨'입니다.", ""]
+        names = SITE_NAMES
+        lines =["# 플랫폼 이력서 자동 저장 결과", "", "사이트별 최신 실행입니다. 저장 후 다시 읽어 확인한 항목만 '확인됨'입니다.", ""]
         for name in default_sites():
             path = self.store.directory / f"auto-{name}.json"
             if not path.exists():
