@@ -364,6 +364,7 @@
 - 검증: `python -m unittest tests.test_site_sync` 14개 통과(저장 확인 창 수락·지원 문구 창 거절·인크루트 문자 변환 저장 확인, 링크드인 편집 화면 판정 포함). 전체 `python -m unittest discover -s tests` 224개 OK(opt-in 4개 skip). 사이트 목록 길이를 5로 가정하던 테스트 3곳은 6으로 고쳤다. 실제 링크드인 화면의 자동 저장은 실행하지 않았다.
 - 배포: 사용자가 Vercel CLI에 다시 로그인한 뒤 allowlist export(`result/hosting/linkedin-f2d8c93`, 61파일, `.vercel`만 제외, 연결 도구 ZIP은 코드와 공개 origin만)를 dry-run으로 검수하고 기존 프로젝트에 production 배포했다(`dpl_34kvtUgJKWoa8niuKJtUMvWSL5zr`, READY, 고정 주소 별칭). 고정 HTTPS 주소에서 HTML·`cloud.js`·`portals.js`·`handoff.js`의 링크드인 반영과 '플랫폼 이력서 전환' 화면의 6개 체크박스, 콘솔 오류 없음을 확인했다.
 
-## 2026-11-02: 개인 이력서·지원 기록 정리 후 develop·main 병합 (Claude)
+## 2026-11-02: 개인 문서 작업 기록 정리, 이력 재작성, develop·main 병합 (Claude)
 
-- 이어서 `job_agent` → `develop` → `main` 순서로 병합했다.
+- 사용자 요청: 이 저장소는 서비스 프로젝트이고, 개인 이력서 수정·플랫폼 반영·회사별 지원 기록은 남기지 않는다. `history.md`·`conversation_l2_cache.md`에서 그런 기록을 지우고 사이트 동작 교훈만 '플랫폼 실화면에서 확인한 사이트 동작'에 남겼다.
+- 예전 커밋에도 같은 기록이 있어 `git filter-repo`로 두 파일의 2026-10-19 이후 해당 절·줄을 모든 커밋에서 지우고, 내용이 비게 된 기록 커밋은 없앴다. `job_agent`·`develop`·`main`을 강제 push했다(코드 파일은 바뀌지 않음, 커밋 해시는 바뀜).
