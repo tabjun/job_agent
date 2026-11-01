@@ -343,3 +343,4 @@
 - `docs/site_form_observations.md`에 링크드인 편집 구조, 확인 창·첨부(저장소와 이력서 연결이 따로)·직무별 이력서 사본·React 입력 관찰을 적었다. 개인 이름·프로필 주소·이력서 번호는 쓰지 않았다.
 - 공개 웹(`deploy/vercel/cloud.js`) 설정에도 `resume_sites`를 더했다.
 - 검증: `python -m unittest tests.test_site_sync` 14개 통과(저장 확인 창 수락·지원 문구 창 거절·인크루트 문자 변환 저장 확인, 링크드인 편집 화면 판정 포함). 전체 `python -m unittest discover -s tests` 224개 OK(opt-in 4개 skip). 사이트 목록 길이를 5로 가정하던 테스트 3곳은 6으로 고쳤다. 실제 링크드인 화면의 자동 저장은 실행하지 않았다.
+- 배포: 사용자가 Vercel CLI에 다시 로그인한 뒤 allowlist export(`result/hosting/linkedin-f2d8c93`, 61파일, `.vercel`만 제외, 연결 도구 ZIP은 코드와 공개 origin만)를 dry-run으로 검수하고 기존 프로젝트에 production 배포했다(`dpl_34kvtUgJKWoa8niuKJtUMvWSL5zr`, READY, 고정 주소 별칭). 고정 HTTPS 주소에서 HTML·`cloud.js`·`portals.js`·`handoff.js`의 링크드인 반영과 '플랫폼 이력서 전환' 화면의 6개 체크박스, 콘솔 오류 없음을 확인했다.
